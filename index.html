@@ -1265,8 +1265,6 @@ async function downloadAllPhotos(docId,docName){
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     await new Promise(r=>setTimeout(r,400));
   }
-});
-  showToast("⬇️ Downloading all photos…");
 }
 function downloadAllClinic(clinicId){
   const clinic=CLINICS.find(c=>c.id===clinicId);
