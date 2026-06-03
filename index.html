@@ -348,6 +348,92 @@ body{font-family:'DM Sans',sans-serif;background:var(--navy);color:var(--white);
 </div>
 
 <script>
+// ── SUPABASE CONFIG ──────────────────────────────────────
+const SUPA_URL    = "https://yngfvoijlgxnmgsxgnjv.supabase.co";
+const SUPA_KEY    = "sb_publishable_U87oj2uUNtaGh9U6L2Yacw_6Idg-2Bt";
+const SUPA_BUCKET = "clinic-directory";
+
+// Upload a file (Blob/File) to Supabase Storage, return public URL
+async function supaUpload(path, file) {
+  const res = await fetch(
+    `${SUPA_URL}/storage/v1/object/${SUPA_BUCKET}/${path}`,
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${SUPA_KEY}`,
+        "Content-Type": file.type || "application/octet-stream",
+        "x-upsert": "true"
+      },
+      body: file
+    }
+  );
+  if(!res.ok) {
+    const err = await res.text();
+    throw new Error("Supabase upload failed: " + err);
+  }
+  // Return a signed URL (private bucket)
+  return await supaSign(path);
+}
+
+// Get a fresh signed URL (1 year expiry) for a stored path
+async function supaSign(path) {
+  const res = await fetch(
+    `${SUPA_URL}/storage/v1/object/sign/${SUPA_BUCKET}/${path}`,
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${SUPA_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ expiresIn: 31536000 }) // 1 year
+    }
+  );
+  if(!res.ok) throw new Error("Supabase sign failed");
+  const data = await res.json();
+  return SUPA_URL + data.signedURL;
+}
+
+// Delete a file from Supabase Storage
+async function supaDelete(path) {
+  await fetch(
+    `${SUPA_URL}/storage/v1/object/${SUPA_BUCKET}`,
+    {
+      method: "DELETE",
+      headers: {
+        "Authorization": `Bearer ${SUPA_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ prefixes: [path] })
+    }
+  );
+}
+
+// Refresh expired signed URLs in galleries and docFiles
+async function refreshSignedUrls() {
+  let changed = false;
+  for(const [docId, arr] of Object.entries(galleries)) {
+    for(let i=0; i<arr.length; i++) {
+      if(arr[i].supaPath && (!arr[i].src || arr[i].src.indexOf('token=') === -1)) {
+        try {
+          arr[i].src = await supaSign(arr[i].supaPath);
+          changed = true;
+        } catch(e) {}
+      }
+    }
+  }
+  for(const [docId, arr] of Object.entries(docFiles)) {
+    for(let i=0; i<arr.length; i++) {
+      if(arr[i].supaPath && (!arr[i].src || arr[i].src.indexOf('token=') === -1)) {
+        try {
+          arr[i].src = await supaSign(arr[i].supaPath);
+          changed = true;
+        } catch(e) {}
+      }
+    }
+  }
+  if(changed) renderAll();
+}
+
 const SILHOUETTE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Crect width='200' height='200' fill='%230f1e3a'/%3E%3Ccircle cx='100' cy='72' r='36' fill='%231e3a5f'/%3E%3Cellipse cx='100' cy='170' rx='58' ry='42' fill='%231e3a5f'/%3E%3C/svg%3E";
 
 const SEEDS = {
@@ -652,14 +738,14 @@ async function bootApp(){
     }
 
   } catch(err){
-    // IndexedDB unavailable (private browsing?) — fall back to seed-only
-    console.warn("IndexedDB unavailable, running in read-only mode:", err);
+    console.warn("IndexedDB unavailable:", err);
     seedGalleries();
-    showToast("⚠️ Private mode detected — uploads won\'t persist across refreshes");
   }
 
-  // Render after data is loaded
+  // Render immediately with cached data, then refresh signed URLs in background
   renderAll();
+  // Refresh signed URLs async (signed URLs are valid 1 year, but refresh on load)
+  refreshSignedUrls().catch(()=>{});
 }
 
 // ── HELPERS ──────────────────────────────────────────────
@@ -965,32 +1051,38 @@ function setGender(docId,clinicId,secId,sel){
 }
 
 // ── DOCUMENT UPLOAD ───────────────────────────────────────
-function addDocs(docId,clinicId,secId,input){
+async function addDocs(docId,clinicId,secId,input){
   const files=Array.from(input.files);
   if(!files.length) return;
-  let loaded=0;
-  files.forEach(file=>{
-    const reader=new FileReader();
-    reader.onload=e=>{
-      if(!docFiles[docId]) docFiles[docId]=[];
-      docFiles[docId].push({name:file.name, type:file.type||"application/octet-stream", src:e.target.result, size:file.size});
-      loaded++;
-      if(loaded===files.length){
-        saveDocs();
-        showToast(`📎 ${files.length} document${files.length>1?"s":""} added for ${getDrName(docId)}`);
-        refreshCard(docId,clinicId,secId);
-      }
-    };
-    reader.onerror=()=>{ loaded++; showToast("⚠️ Could not read: "+file.name); };
-    reader.readAsDataURL(file);
-  });
+  showToast(`⬆️ Uploading ${files.length} document${files.length>1?'s':''}…`);
+  if(!docFiles[docId]) docFiles[docId]=[];
+  let uploaded=0;
+  for(let i=0; i<files.length; i++){
+    const file=files[i];
+    const ext=file.name.split('.').pop()||'bin';
+    const path=`docs/${docId}/${Date.now()}_${i}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+    try{
+      const url = await supaUpload(path, file);
+      docFiles[docId].push({name:file.name, type:file.type||"application/octet-stream", src:url, supaPath:path, size:file.size});
+      uploaded++;
+    } catch(err){
+      showToast(`⚠️ Upload failed: ${file.name}`);
+    }
+  }
+  if(uploaded>0){
+    saveDocs();
+    showToast(`📎 ${uploaded} document${uploaded>1?"s":""} saved for ${getDrName(docId)}`);
+    refreshCard(docId,clinicId,secId);
+  }
 }
 
 function deleteDoc(docId,idx,clinicId,secId){
   if(!docFiles[docId]) return;
-  const name = docFiles[docId][idx]?.name||"file";
+  const doc=docFiles[docId][idx];
+  const name=doc?.name||"file";
   docFiles[docId].splice(idx,1);
   saveDocs();
+  if(doc && doc.supaPath) supaDelete(doc.supaPath).catch(()=>{});
   showToast(`🗑️ Document removed: ${name}`);
   refreshCard(docId,clinicId,secId);
 }
@@ -1014,30 +1106,30 @@ function showToast(msg){
   t._to=setTimeout(()=>{ t.style.opacity="0"; },2800);
 }
 // ── ADD PHOTOS ───────────────────────────────────────────
-function addPhotos(docId,clinicId,secId,input){
+async function addPhotos(docId,clinicId,secId,input){
   const files=Array.from(input.files);
   if(!files.length) return;
-  let loaded=0;
+  showToast(`⬆️ Uploading ${files.length} photo${files.length>1?'s':''}…`);
+  let uploaded=0;
   const base=galleries[docId].length;
-  files.forEach((file,i)=>{
-    const reader=new FileReader();
-    reader.onload=e=>{
-      galleries[docId].push({src:e.target.result, name:file.name||`${docId}_${base+i+1}.jpg`, user:true});
-      loaded++;
-      if(loaded===files.length){
-        cardIndex[docId]=galleries[docId].length-1;
-        saveGalleries();
-        showToast(`✅ ${files.length} photo${files.length>1?'s':''} added for ${getDrName(docId)}`);
-        renderAll();
-      }
-    };
-    reader.onerror=()=>{
-      loaded++;
-      showToast(`⚠️ Could not read file: ${file.name}`);
-      if(loaded===files.length && galleries[docId].length>base) renderAll();
-    };
-    reader.readAsDataURL(file);
-  });
+  for(let i=0; i<files.length; i++){
+    const file=files[i];
+    const ext=file.name.split('.').pop()||'jpg';
+    const path=`photos/${docId}/${Date.now()}_${i}.${ext}`;
+    try{
+      const url = await supaUpload(path, file);
+      galleries[docId].push({src:url, supaPath:path, name:file.name||`${docId}_${base+i+1}.${ext}`, user:true});
+      uploaded++;
+    } catch(err){
+      showToast(`⚠️ Upload failed: ${file.name}`);
+    }
+  }
+  if(uploaded>0){
+    cardIndex[docId]=galleries[docId].length-1;
+    saveGalleries();
+    showToast(`✅ ${uploaded} photo${uploaded>1?'s':''} saved for ${getDrName(docId)}`);
+    renderAll();
+  }
 }
 
 // ── CARD NAV ─────────────────────────────────────────────
@@ -1066,9 +1158,12 @@ function refreshCard(docId,clinicId,secId){
 function deletePhoto(docId,clinicId,secId){
   const g=galleries[docId]; if(!g.length) return;
   const _delIdx=cardIndex[docId]??0;
+  const photo=g[_delIdx];
   g.splice(_delIdx,1);
   cardIndex[docId]=Math.max(0,_delIdx-1);
   saveGalleries();
+  // Also delete from Supabase if it was uploaded there
+  if(photo && photo.supaPath) supaDelete(photo.supaPath).catch(()=>{});
   showToast(`🗑️ Photo removed for ${getDrName(docId)}`);
   renderAll();
 }
