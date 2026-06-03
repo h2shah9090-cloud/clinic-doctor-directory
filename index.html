@@ -549,35 +549,15 @@ const CLINICS = [
   // ── EVANSDALE HEALTH CENTRE ──────────────────────────────
   {id:"evansdale",name:"Evansdale Health Centre",icon:"🏥",location:"8214 144 Ave NW, Edmonton, AB T5E 2H4",
     sections:[
-      // Section 4: Family Physicians
-      // Keep: Dr. Mustafa, Dr. A. Siri, Dr. K. Mohammad, Dr. A. Fayaz
-      // Remove: Dr. Khalifa Mohammed (was Dr. M. Ahmed replacement — no longer needed)
-      // Gender fixes: Dr. A. Fayaz = Female, Dr. A. Siri stays silhouette (no photo by request)
-      {sectionId:"fam",sectionLabel:"Family Physicians",sectionType:"family",doctors:[
-        {id:"eva_mustafa", name:"Dr. Mustafa",     specialty:"Family Physician",type:"family",gender:"male"},
-        {id:"eva_siri",    name:"Dr. A. Siri",     specialty:"Family Physician",type:"family",gender:"male",silhouette:true},
-        {id:"eva_kmoh",    name:"Dr. K. Mohammad", specialty:"Family Physician",type:"family",gender:"male"},
-        {id:"eva_afas",    name:"Dr. A. Fayaz",    specialty:"Family Physician",type:"family",gender:"female"},
-        {id:"eva_omosule", name:"Dr. A. Omosule",  specialty:"Family Physician",type:"family",gender:"female",awaitingPhoto:true},
-        {id:"eva_lateef",  name:"Dr. R. Lateef",   specialty:"Family Physician",type:"family",gender:"female",awaitingPhoto:true},
-      ]},
-      // Section 5: Our Specialists
-      // Keep: Dr. Muhammad Khan, Dr. A. Adegite, Dr. Rahmati, Dr. Chang, Dr. Hafiza
-      // Remove: Dr. Shelvedin, Dr. Kur Khalifa, existing psychiatrist (replaced by Dr. Rahmati)
-      // Photos: Dr. Adegite = actual seed, Dr. Khan = actual seed, Dr. Rahmati = awaiting, Dr. Siri = silhouette
-      // Gender fixes: Dr. Rahmati = Female, Dr. Hafiza = Female
       {sectionId:"spec",sectionLabel:"Our Specialists",sectionType:"specialist",doctors:[
-        {id:"eva_khan",    name:"Dr. Muhammad Khan",          specialty:"Paediatrician (Ireland/UK trained)",type:"specialist",gender:"male",seed:"dr_khan"},
-        {id:"eva_adegite", name:"Dr. Adedayo David Adegite", specialty:"Endocrinologist — <2 wk wait",    type:"specialist",gender:"male",seed:"dr_adegite"},
-        {id:"eva_rahmati", name:"Dr. Rahmati",               specialty:"Psychiatrist",                    type:"specialist",gender:"female",awaitingPhoto:true},
-        {id:"eva_chang",   name:"Dr. Patrick Chan",          specialty:"Pain Management",                 type:"specialist",gender:"male",seed:"dr_chan"},
-        {id:"eva_hafiza",  name:"Dr. Hafiza",                specialty:"Specialist",                      type:"specialist",gender:"female"},
-        {id:"eva_hakuma",  name:"Dr. Mustapha Ben Hakuma",   specialty:"Gastroenterologist",              type:"specialist",gender:"male",seed:"dr_hakuma_e"},
-        {id:"eva_andrews", name:"Dr. Kashini Andrew",        specialty:"Consultant Dermatologist",        type:"specialist",gender:"female",seed:"dr_andrew_e"},
-        {id:"eva_adzeez",  name:"Dr. I. Abdul Adzeez",       specialty:"Family Physician",                type:"family",gender:"male",seed:"dr_adzeez_e"},
-        {id:"eva_safa",    name:"Dr. Safa Al Hassan",        specialty:"Gynaecologist",                   type:"specialist",gender:"female",seed:"dr_safa"},
+        {id:"eva_chan",     name:"Dr. Patrick Chan",         specialty:"Pain Management Specialist",type:"specialist",gender:"male",  seed:"dr_chan"},
+        {id:"eva_adegite",  name:"Dr. A. Adegite",           specialty:"Endocrinologist",           type:"specialist",gender:"male",  seed:"dr_adegite"},
+        {id:"eva_bhatti",   name:"Dr. F. Bhatti",            specialty:"Gynaecologist",             type:"specialist",gender:"female",awaitingPhoto:true},
+        {id:"eva_mkhan",    name:"Dr. M. Khan",              specialty:"Paediatrician",             type:"specialist",gender:"male",  seed:"dr_khan"},
+        {id:"eva_hakuma",   name:"Dr. Ben Hakuma",           specialty:"Gastroenterologist",        type:"specialist",gender:"male",  seed:"dr_hakuma_e"},
+        {id:"eva_rahmatti", name:"Dr. F. Rahmatti",          specialty:"Psychiatrist",              type:"specialist",gender:"female",awaitingPhoto:true},
       ]}
-    ]},
+    ]}
 
   // ── GURU NANAK CHILD CARE ────────────────────────────────
   {id:"gndc",name:"Guru Nanak Child Care",icon:"🏫",location:"Surrey, BC / Edmonton, AB",
