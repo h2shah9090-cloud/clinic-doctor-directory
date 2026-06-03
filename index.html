@@ -2,8 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Clinic & Doctor Directory</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="description" content="Abubakar's clinic network — Edmonton, Alberta. Doctor and specialist directory across 11 clinics.">
+<meta name="theme-color" content="#09132a">
+<meta name="robots" content="noindex, nofollow">
+<title>Clinic &amp; Doctor Directory — Abubakar Network</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -41,30 +46,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--navy);color:var(--white);
   background:rgba(0,0,0,0.22);border-bottom:1px solid var(--border);flex-wrap:wrap}
 
 
-.sr-header{padding:10px 16px 6px;font-size:10.5px;color:var(--muted);
-  font-weight:600;letter-spacing:1.5px;text-transform:uppercase;
-  border-bottom:1px solid var(--border)}
-.sr-item{display:flex;align-items:center;gap:12px;padding:11px 16px;
-  cursor:pointer;transition:background .15s;border-bottom:1px solid rgba(255,255,255,0.04)}
-.sr-item:last-child{border-bottom:none}
-.sr-item:hover{background:rgba(0,196,180,0.07)}
-.sr-item-thumb{width:38px;height:38px;border-radius:8px;object-fit:cover;
-  background:var(--card);flex-shrink:0;border:1px solid var(--border)}
-.sr-item-thumb-placeholder{width:38px;height:38px;border-radius:8px;
-  background:var(--card);flex-shrink:0;border:1px solid var(--border);
-  display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:16px}
-.sr-item-info{flex:1;min-width:0}
-.sr-item-name{font-size:13.5px;font-weight:600;color:var(--white);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sr-item-name mark{background:rgba(0,196,180,0.25);color:var(--accent);
-  border-radius:3px;padding:0 2px}
-.sr-item-sub{font-size:11px;color:var(--muted);margin-top:2px;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sr-item-badge{flex-shrink:0;font-size:10px;font-weight:700;letter-spacing:0.5px;
-  padding:3px 8px;border-radius:20px;text-transform:uppercase}
-.sr-item-badge.family{background:rgba(0,196,180,0.1);color:var(--accent);border:1px solid rgba(0,196,180,0.2)}
-.sr-item-badge.specialist{background:rgba(201,168,76,0.1);color:var(--gold);border:1px solid rgba(201,168,76,0.2)}
-.sr-empty{padding:28px 16px;text-align:center;color:var(--muted);font-size:13px}
+
 .stat{text-align:center}
 .stat-num{font-family:'Playfair Display',serif;font-size:26px;font-weight:700;color:var(--accent)}
 .stat-label{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-top:2px}
@@ -72,7 +54,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--navy);color:var(--white);
 /* TABS */
 /* LAYOUT: sidebar + main */
 .app-layout{display:flex;align-items:flex-start;max-width:1380px;margin:0 auto;padding:24px 36px 60px;gap:20px}
-.tabs-outer{width:230px;flex-shrink:0;position:sticky;top:20px}
+.tabs-outer{width:230px;flex-shrink:0;position:sticky;top:20px;max-height:calc(100vh - 40px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
 .tabs-scroll{display:flex;flex-direction:column;gap:0}
 .tab-btn{width:100%;height:44px;padding:0 14px;background:transparent;
   border:none;border-left:3px solid transparent;border-radius:0;
@@ -100,7 +82,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--navy);color:var(--white);
 .panel-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .panel-search{background:var(--card);border:1px solid var(--border);border-radius:8px;
   padding:9px 14px 9px 36px;color:var(--white);font-family:'DM Sans',sans-serif;
-  font-size:13px;outline:none;transition:border .2s;width:200px;
+  font-size:13px;outline:none;transition:border .2s;width:200px;max-width:100%;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='%237a88a4' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.099zm-5.44 1.406a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z'/%3E%3C/svg%3E");
   background-repeat:no-repeat;background-position:12px center}
 .panel-search:focus{border-color:var(--accent)}
@@ -124,6 +106,12 @@ body{font-family:'DM Sans',sans-serif;background:var(--navy);color:var(--white);
 .doctor-card:hover{transform:translateY(-3px);box-shadow:0 12px 40px rgba(0,196,180,0.10);
   border-color:rgba(0,196,180,0.28)}
 .doctor-card.hidden{display:none}
+
+/* SYNC LOADING SHIMMER */
+.syncing-overlay{position:fixed;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);
+  background-size:200% 100%;animation:syncBar 1.4s ease infinite;z-index:9990}
+@keyframes syncBar{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
 /* GALLERY */
 .gallery-area{position:relative;width:100%;height:190px;background:#0a1628;
@@ -162,7 +150,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--navy);color:var(--white);
 /* THUMB STRIP */
 .thumb-strip{display:flex;gap:4px;padding:6px 8px;background:rgba(0,0,0,0.4);
   overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;
-  min-height:52px;align-items:center}
+  min-height:52px;max-height:60px;align-items:center}
 .thumb-strip::-webkit-scrollbar{height:3px}
 .thumb-strip::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 .thumb{width:40px;height:40px;border-radius:5px;object-fit:cover;object-position:top;
@@ -293,24 +281,55 @@ body{font-family:'DM Sans',sans-serif;background:var(--navy);color:var(--white);
 .lb-nav:hover{background:rgba(0,196,180,0.3)}
 .lb-prev{left:-22px}.lb-next{right:-22px}
 
-/* TOAST */
-.toast{position:fixed;bottom:28px;right:28px;background:var(--accent);color:#09132a;
-  font-weight:600;font-size:13px;padding:12px 20px;border-radius:10px;
-  box-shadow:0 8px 32px rgba(0,196,180,0.35);
-  transform:translateY(80px);opacity:0;transition:transform .3s,opacity .3s;
-  z-index:9999;pointer-events:none}
-.toast.show{transform:translateY(0);opacity:1}
 
+
+/* ── RESPONSIVE ─────────────────────────────────────── */
+@media(max-width:1100px){
+  .app-layout{padding:20px 24px 48px;gap:16px}
+  .tabs-outer{width:200px}
+}
 @media(max-width:900px){
-  .header,.stats{padding-left:24px;padding-right:24px}
-  .tabs-outer,.panel-area{padding-left:16px;padding-right:16px}
+  .header{padding:36px 24px 30px}
+  .stats{padding:16px 24px;gap:28px}
+  .app-layout{padding:16px 16px 40px;gap:14px}
+  .tabs-outer{width:180px}
   .panel{padding:20px 16px 16px}
   .doctors-grid{grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+  .panel-search{width:160px}
+}
+@media(max-width:700px){
+  /* Stack sidebar above panel on mobile */
+  .app-layout{flex-direction:column;padding:12px 12px 32px}
+  .tabs-outer{width:100%;position:static;top:auto}
+  .tabs-scroll{flex-direction:row;flex-wrap:wrap;gap:6px;padding:4px 0 8px}
+  .tab-btn{width:auto;height:34px;padding:0 12px;border-left:none;
+    border-radius:20px;border:1px solid var(--border);font-size:11.5px;flex-shrink:0}
+  .tab-btn.active{background:var(--accent);color:#09132a;border-color:var(--accent)}
+  .tab-btn span:first-child{display:none} /* hide icon on mobile tabs */
+  .tabs-divider{display:none}
+  .panel{padding:16px 12px 14px}
+  .panel-header{flex-direction:column;gap:10px}
+  .panel-actions{width:100%;justify-content:flex-start}
+  .panel-search{width:100%;max-width:100%}
+  .doctors-grid{grid-template-columns:1fr 1fr;gap:12px}
+  .stats{gap:20px;padding:12px 16px}
+  .stat-num{font-size:20px}
+}
+@media(max-width:480px){
+  .header{padding:28px 16px 24px}
+  .header h1{font-size:clamp(22px,7vw,32px)}
+  .doctors-grid{grid-template-columns:1fr;gap:10px}
+  .app-layout{padding:10px 10px 28px}
+  .panel{padding:14px 10px 12px}
+  .card-actions{gap:5px}
+  .btn-sm{padding:5px 9px;font-size:10.5px}
+  .stats{flex-wrap:wrap;gap:14px}
+  .panel-search{font-size:12px}
 }
 
 /* STOPPED clinics */
 .tab-btn.stopped{opacity:0.45;position:relative;}
-.tab-btn.stopped::after{content:"STOPPED";position:absolute;right:10px;font-size:7px;font-weight:700;letter-spacing:1px;background:#c0392b;color:#fff;padding:1px 5px;border-radius:4px;text-transform:uppercase;}
+.tab-btn.stopped::after{content:"STOPPED";position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:7px;font-weight:700;letter-spacing:1px;background:#c0392b;color:#fff;padding:1px 5px;border-radius:4px;text-transform:uppercase;}
 .tabs-divider{height:1px;background:var(--border);margin:6px 0;}
 .clinic-panel.stopped .panel-header{opacity:0.6;}
 .stopped-banner{background:rgba(192,57,43,0.12);border:1px solid rgba(192,57,43,0.35);border-radius:8px;padding:10px 16px;margin-bottom:18px;color:#e74c3c;font-size:12.5px;font-weight:500;letter-spacing:0.5px;display:flex;align-items:center;gap:8px;}
@@ -327,15 +346,14 @@ body{font-family:'DM Sans',sans-serif;background:var(--navy);color:var(--white);
 </div>
 
 <div class="stats">
-  <div class="stat"><div class="stat-num">11</div><div class="stat-label">Clinics</div></div>
-  <div class="stat"><div class="stat-num">25+</div><div class="stat-label">Doctors</div></div>
-  <div class="stat"><div class="stat-num" id="totalPhotos">7</div><div class="stat-label">Photos On File</div></div>
+  <div class="stat"><div class="stat-num" id="statClinics">—</div><div class="stat-label">Clinics</div></div>
+  <div class="stat"><div class="stat-num" id="statDoctors">—</div><div class="stat-label">Doctors</div></div>
+  <div class="stat"><div class="stat-num" id="totalPhotos">—</div><div class="stat-label">Photos On File</div></div>
   <div class="stat"><div class="stat-num">YEG</div><div class="stat-label">Edmonton, AB</div></div>
 </div>
 
 <div class="app-layout"><div class="tabs-outer"><div class="tabs-scroll" id="tabsScroll"></div></div><div class="panel-area" id="panelArea"></div></div>
 
-<div class="toast" id="toast"></div>
 <div class="lightbox" id="lightbox">
   <div class="lb-img-wrap">
     <button class="lb-close" onclick="closeLb()">&#x2715;</button>
@@ -433,6 +451,8 @@ async function refreshSignedUrls() {
   }
   if(changed) renderAll();
 }
+
+function escHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
 
 const SILHOUETTE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Crect width='200' height='200' fill='%230f1e3a'/%3E%3Ccircle cx='100' cy='72' r='36' fill='%231e3a5f'/%3E%3Cellipse cx='100' cy='170' rx='58' ry='42' fill='%231e3a5f'/%3E%3C/svg%3E";
 
@@ -602,13 +622,14 @@ const genderOv = {};
 // → syncs across every device automatically
 
 async function dbQuery(table, method, body, extraHeaders){
+  if(!extraHeaders) extraHeaders = {};
   const res = await fetch(`${SUPA_URL}/rest/v1/${table}`, {
     method: method||"GET",
     headers: Object.assign({
       "apikey":        SUPA_KEY,
       "Authorization": `Bearer ${SUPA_KEY}`,
       "Content-Type":  "application/json"
-    }, extraHeaders||{})  ,
+    }, extraHeaders),
     body: body ? JSON.stringify(body) : undefined
   });
   if(!res.ok){ const e=await res.text(); throw new Error(e); }
@@ -666,7 +687,8 @@ async function saveDocToDB(docId, doc){
 
 // Save gender override to Supabase DB
 async function saveGenderToDB(docId, gender){
-  await fetch(`${SUPA_URL}/rest/v1/cd_gender`, {
+  // cd_gender PK is doc_id — use on_conflict=doc_id
+  await fetch(`${SUPA_URL}/rest/v1/cd_gender?on_conflict=doc_id`, {
     method: "POST",
     headers: {
       "apikey":        SUPA_KEY,
@@ -771,15 +793,19 @@ async function bootApp(){
 
   // 3. Sync from Supabase in background — never blocks the page
   setTimeout(async ()=>{
+    // Show progress bar
+    const bar = document.createElement("div");
+    bar.className = "syncing-overlay";
+    document.body.appendChild(bar);
     try {
-      showToast("🔄 Syncing from cloud…");
       await loadFromSupabase();
       renderAll();
       updateTotalCount();
-      showToast("✅ Synced");
+      showToast("✅ Synced from cloud");
     } catch(err){
       console.warn("Supabase sync failed:", err);
-      // Page still works with seed data — no toast needed to avoid alarming users
+    } finally {
+      bar.remove();
     }
   }, 100);
 }
@@ -805,7 +831,15 @@ function totalWithPhotos(clinic){
 }
 function updateTotalCount(){
   const t=Object.values(galleries).reduce((s,g)=>s+g.length,0);
-  document.getElementById("totalPhotos").textContent=t;
+  const el=document.getElementById("totalPhotos");
+  if(el) el.textContent=t;
+  // Dynamic clinic + doctor counts
+  const activeClinicCount = CLINICS.filter(c=>c.status!=="stopped").length;
+  const totalDoctorCount  = CLINICS.reduce((n,c)=>n+c.sections.reduce((m,s)=>m+s.doctors.length,0),0);
+  const cEl=document.getElementById("statClinics");
+  const dEl=document.getElementById("statDoctors");
+  if(cEl) cEl.textContent=activeClinicCount;
+  if(dEl) dEl.textContent=totalDoctorCount+"+";
 }
 
 // ── RENDER ───────────────────────────────────────────────
@@ -887,6 +921,7 @@ function renderTabs(){
 }
 
 function renderPanel(clinicId){
+  try {
   const clinic=CLINICS.find(c=>c.id===clinicId);
   const twp=totalWithPhotos(clinic);
   const td=totalDoctors(clinic);
@@ -930,6 +965,10 @@ function renderPanel(clinicId){
     </div>
     ${sectionsHtml}
   </div>`;
+
+  } catch(err){
+    console.error("renderPanel error:", err);
+  }
 }
 
 function cardHTML(doc,clinicId,secId){
@@ -1052,7 +1091,7 @@ function cardHTML(doc,clinicId,secId){
     </button>` : "";
 
   return `
-  <div class="doctor-card" id="card_${doc.id}" data-name="${doc.name.toLowerCase()}"
+  <div class="doctor-card" id="card_${doc.id}" data-name="${escHtml(doc.name.toLowerCase())}"
     ondragover="cardDragOver(event,'${doc.id}')"
     ondragleave="cardDragLeave(event,'${doc.id}')"
     ondrop="cardDrop(event,'${doc.id}','${clinicId}','${secId}')">
@@ -1062,7 +1101,7 @@ function cardHTML(doc,clinicId,secId){
     </div>
     ${galleryArea}
     <div class="card-body">
-      <div class="card-meta">${gDot}<div class="doctor-name-text">${doc.name}</div><div style="margin-left:auto">${genderSel}</div></div>
+      <div class="card-meta">${gDot}<div class="doctor-name-text">${escHtml(doc.name)}</div><div style="margin-left:auto">${genderSel}</div></div>
       <span class="specialty-tag ${doc.type}">${doc.specialty}</span>
     </div>
     <div class="card-actions">${uploadBtn}${dlCurrent}${dlAll}${delBtn}</div>
@@ -1211,17 +1250,22 @@ function deletePhoto(docId,clinicId,secId){
     deletePhotoFromDB(photo.supaPath);
   }
   showToast(`🗑️ Photo removed for ${getDrName(docId)}`);
-  renderAll();
+  refreshCard(docId, clinicId, secId);
 }
 
 // ── DOWNLOAD ─────────────────────────────────────────────
-function downloadAllPhotos(docId,docName){
-  galleries[docId].forEach((p,i)=>{
-    setTimeout(()=>{
-      const a=document.createElement("a");
-      a.href=p.src; a.download=docName.replace(/[^a-zA-Z0-9]/g,"_")+"_"+(i+1)+".jpg"; a.click();
-    },i*400);
-  });
+async function downloadAllPhotos(docId,docName){
+  const photos=galleries[docId];
+  if(!photos||!photos.length){ showToast("⚠️ No photos to download"); return; }
+  showToast(`⬇️ Downloading ${photos.length} photo${photos.length>1?'s':''}…`);
+  for(let i=0;i<photos.length;i++){
+    const p=photos[i];
+    const a=document.createElement("a");
+    a.href=p.src; a.download=p.name||`${docName}_${i+1}.jpg`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    await new Promise(r=>setTimeout(r,400));
+  }
+});
   showToast("⬇️ Downloading all photos…");
 }
 function downloadAllClinic(clinicId){
