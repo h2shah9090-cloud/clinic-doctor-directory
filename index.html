@@ -601,23 +601,27 @@ const genderOv = {};
 // All metadata (photo/doc paths + gender) stored in Supabase DB
 // → syncs across every device automatically
 
-async function dbQuery(table, method, body){
+async function dbQuery(table, method, body, extraHeaders){
   const res = await fetch(`${SUPA_URL}/rest/v1/${table}`, {
     method: method||"GET",
-    headers: {
+    headers: Object.assign({
       "apikey":        SUPA_KEY,
       "Authorization": `Bearer ${SUPA_KEY}`,
-      "Content-Type":  "application/json",
-      "Prefer":        method==="POST" ? "resolution=merge-duplicates,return=representation" : ""
-    },
+      "Content-Type":  "application/json"
+    }, extraHeaders||{})  ,
     body: body ? JSON.stringify(body) : undefined
   });
   if(!res.ok){ const e=await res.text(); throw new Error(e); }
-  return method==="DELETE" ? null : res.json();
+  if(method==="DELETE") return null;
+  const txt = await res.text();
+  return txt ? JSON.parse(txt) : null;
 }
 
 async function dbUpsert(table, row){
-  return dbQuery(table+"?on_conflict=supa_path", "POST", row);
+  // Use POST with Prefer: resolution=merge-duplicates for upsert
+  return dbQuery(table, "POST", row, {
+    "Prefer": "resolution=merge-duplicates,return=representation"
+  });
 }
 
 async function dbDelete(table, col, val){
@@ -668,7 +672,7 @@ async function saveGenderToDB(docId, gender){
       "apikey":        SUPA_KEY,
       "Authorization": `Bearer ${SUPA_KEY}`,
       "Content-Type":  "application/json",
-      "Prefer":        "resolution=merge-duplicates"
+      "Prefer":        "resolution=merge-duplicates,return=representation"
     },
     body: JSON.stringify({ doc_id: docId, gender: gender, updated_at: new Date().toISOString() })
   }).catch(()=>{});
@@ -755,23 +759,29 @@ function seedGalleries(){
 }
 
 async function bootApp(){
-  // 1. Seed base galleries from embedded data (instant)
-  seedGalleries();
-  // 2. Render immediately so page isn't blank while loading from cloud
-  renderAll();
-  showToast("🔄 Syncing from cloud…");
+  try {
+    // 1. Seed base galleries from embedded data (instant)
+    seedGalleries();
+  } catch(e){ console.error("Seed error:", e); }
 
   try {
-    // 3. Load all user-uploaded data from Supabase DB
-    await loadFromSupabase();
-    // 4. Re-render with full cloud data
+    // 2. Render immediately so page is never blank
     renderAll();
-    updateTotalCount();
-    showToast("✅ Synced from cloud");
-  } catch(err){
-    console.warn("Supabase sync failed:", err);
-    showToast("⚠️ Cloud sync failed — showing local data only");
-  }
+  } catch(e){ console.error("Initial render error:", e); }
+
+  // 3. Sync from Supabase in background — never blocks the page
+  setTimeout(async ()=>{
+    try {
+      showToast("🔄 Syncing from cloud…");
+      await loadFromSupabase();
+      renderAll();
+      updateTotalCount();
+      showToast("✅ Synced");
+    } catch(err){
+      console.warn("Supabase sync failed:", err);
+      // Page still works with seed data — no toast needed to avoid alarming users
+    }
+  }, 100);
 }
 
 // ── HELPERS ──────────────────────────────────────────────
