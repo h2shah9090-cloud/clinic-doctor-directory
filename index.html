@@ -193,6 +193,20 @@ body{font-family:'DM Sans',sans-serif;background:var(--navy);color:var(--white);
 .specialty-tag.family{background:rgba(0,196,180,0.1);border:1px solid rgba(0,196,180,0.25);color:var(--accent)}
 .specialty-tag.specialist{background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.3);color:var(--gold)}
 
+/* DRAG & DROP OVERLAY */
+.card-drop-zone{
+  position:absolute;inset:0;z-index:50;border-radius:12px;
+  background:rgba(0,196,180,0.12);border:2px dashed var(--accent);
+  display:none;align-items:center;justify-content:center;flex-direction:column;
+  gap:8px;pointer-events:none;backdrop-filter:blur(2px);
+}
+.card-drop-zone.active{display:flex}
+.card-drop-zone-icon{font-size:28px}
+.card-drop-zone-label{font-size:12px;font-weight:600;color:var(--accent);
+  letter-spacing:0.5px;text-align:center;padding:0 12px}
+.doctor-card{position:relative}
+.doctor-card.drag-over .card-drop-zone{display:flex}
+
 /* CARD ACTIONS */
 .card-actions{display:flex;gap:7px;flex-wrap:wrap;padding:0 16px}
 
@@ -621,6 +635,56 @@ function updateTotalCount(){
 }
 
 // ── RENDER ───────────────────────────────────────────────
+// ── DRAG & DROP ───────────────────────────────────────────
+function cardDragOver(e, docId){
+  e.preventDefault();
+  e.stopPropagation();
+  var card = document.getElementById('card_'+docId);
+  if(card) card.classList.add('drag-over');
+  var dz = document.getElementById('dz_'+docId);
+  if(dz) dz.classList.add('active');
+}
+
+function cardDragLeave(e, docId){
+  // Only fire if leaving the card entirely (not a child element)
+  var card = document.getElementById('card_'+docId);
+  if(!card) return;
+  var rect = card.getBoundingClientRect();
+  if(e.clientX >= rect.left && e.clientX <= rect.right &&
+     e.clientY >= rect.top  && e.clientY <= rect.bottom) return;
+  card.classList.remove('drag-over');
+  var dz = document.getElementById('dz_'+docId);
+  if(dz) dz.classList.remove('active');
+}
+
+function cardDrop(e, docId, clinicId, secId){
+  e.preventDefault();
+  e.stopPropagation();
+  var card = document.getElementById('card_'+docId);
+  if(card) card.classList.remove('drag-over');
+  var dz = document.getElementById('dz_'+docId);
+  if(dz) dz.classList.remove('active');
+
+  var files = Array.prototype.slice.call(e.dataTransfer.files);
+  if(!files.length) return;
+
+  var photos = files.filter(function(f){ return f.type.indexOf('image/') === 0; });
+  var docs   = files.filter(function(f){ return f.type.indexOf('image/') !== 0; });
+
+  if(photos.length){
+    // simulate input for addPhotos
+    var fakeInput = { files: photos };
+    addPhotos(docId, clinicId, secId, fakeInput);
+  }
+  if(docs.length){
+    var fakeInput2 = { files: docs };
+    addDocs(docId, clinicId, secId, fakeInput2);
+  }
+  if(!photos.length && !docs.length){
+    showToast('⚠️ No supported files found in drop');
+  }
+}
+
 function renderAll(){ renderTabs(); renderPanel(activeTab); updateTotalCount(); }
 
 function renderTabs(){
@@ -814,7 +878,14 @@ function cardHTML(doc,clinicId,secId){
     </button>` : "";
 
   return `
-  <div class="doctor-card" id="card_${doc.id}" data-name="${doc.name.toLowerCase()}">
+  <div class="doctor-card" id="card_${doc.id}" data-name="${doc.name.toLowerCase()}"
+    ondragover="cardDragOver(event,'${doc.id}')"
+    ondragleave="cardDragLeave(event,'${doc.id}')"
+    ondrop="cardDrop(event,'${doc.id}','${clinicId}','${secId}')">
+    <div class="card-drop-zone" id="dz_${doc.id}">
+      <div class="card-drop-zone-icon">⬇️</div>
+      <div class="card-drop-zone-label">Drop photo or document here</div>
+    </div>
     ${galleryArea}
     <div class="card-body">
       <div class="card-meta">${gDot}<div class="doctor-name-text">${doc.name}</div><div style="margin-left:auto">${genderSel}</div></div>
