@@ -617,81 +617,146 @@ const docFiles = {};
 // gender overrides: { docId: "male"|"female"|"" }
 const genderOv = {};
 
-// ── IndexedDB PERSISTENCE (unlimited storage, survives refresh) ──────────────
-const IDB_NAME    = "clinicDirectoryDB";
-const IDB_VERSION = 1;
-const STORE_PHOTOS = "galleries";
-const STORE_DOCS   = "docFiles";
-const STORE_GENDER = "genderOv";
+// ── SUPABASE DATABASE SYNC ───────────────────────────────────────────────────
+// All metadata (photo/doc paths + gender) stored in Supabase DB
+// → syncs across every device automatically
 
-let _db = null;
+async function dbQuery(table, method, body){
+  const res = await fetch(`${SUPA_URL}/rest/v1/${table}`, {
+    method: method||"GET",
+    headers: {
+      "apikey":        SUPA_KEY,
+      "Authorization": `Bearer ${SUPA_KEY}`,
+      "Content-Type":  "application/json",
+      "Prefer":        method==="POST" ? "resolution=merge-duplicates,return=representation" : ""
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if(!res.ok){ const e=await res.text(); throw new Error(e); }
+  return method==="DELETE" ? null : res.json();
+}
 
-function openDB(){
-  return new Promise((resolve, reject)=>{
-    const req = indexedDB.open(IDB_NAME, IDB_VERSION);
-    req.onupgradeneeded = e=>{
-      const db = e.target.result;
-      if(!db.objectStoreNames.contains(STORE_PHOTOS)) db.createObjectStore(STORE_PHOTOS);
-      if(!db.objectStoreNames.contains(STORE_DOCS))   db.createObjectStore(STORE_DOCS);
-      if(!db.objectStoreNames.contains(STORE_GENDER)) db.createObjectStore(STORE_GENDER);
-    };
-    req.onsuccess = e=>{ _db = e.target.result; resolve(_db); };
-    req.onerror   = e=>reject(e.target.error);
+async function dbUpsert(table, row){
+  return dbQuery(table+"?on_conflict=supa_path", "POST", row);
+}
+
+async function dbDelete(table, col, val){
+  await fetch(`${SUPA_URL}/rest/v1/${table}?${col}=eq.${encodeURIComponent(val)}`, {
+    method: "DELETE",
+    headers: {
+      "apikey":        SUPA_KEY,
+      "Authorization": `Bearer ${SUPA_KEY}`
+    }
   });
 }
 
-function idbSet(store, key, value){
-  return new Promise((resolve, reject)=>{
-    const tx  = _db.transaction(store, "readwrite");
-    const req = tx.objectStore(store).put(value, key);
-    req.onsuccess = ()=>resolve();
-    req.onerror   = e=>reject(e.target.error);
-  });
+async function dbSelect(table, params){
+  const qs = params ? "?"+params : "";
+  return dbQuery(table+qs, "GET");
 }
 
-function idbGet(store, key){
-  return new Promise((resolve, reject)=>{
-    const tx  = _db.transaction(store, "readonly");
-    const req = tx.objectStore(store).get(key);
-    req.onsuccess = e=>resolve(e.target.result);
-    req.onerror   = e=>reject(e.target.error);
-  });
+// Save a single photo row to Supabase DB
+async function savePhotoToDB(docId, photo){
+  if(!photo.supaPath) return;
+  await dbUpsert("cd_photos", {
+    doc_id:    docId,
+    name:      photo.name,
+    supa_path: photo.supaPath,
+    supa_url:  photo.src,
+    is_user:   true
+  }).catch(()=>{});
 }
 
-function idbGetAll(store){
-  return new Promise((resolve, reject)=>{
-    const tx      = _db.transaction(store, "readonly");
-    const results = {};
-    const cursor  = tx.objectStore(store).openCursor();
-    cursor.onsuccess = e=>{
-      const c = e.target.result;
-      if(c){ results[c.key] = c.value; c.continue(); }
-      else resolve(results);
-    };
-    cursor.onerror = e=>reject(e.target.error);
-  });
+// Save a single doc row to Supabase DB
+async function saveDocToDB(docId, doc){
+  if(!doc.supaPath) return;
+  await dbUpsert("cd_docs", {
+    doc_id:    docId,
+    name:      doc.name,
+    file_type: doc.type,
+    file_size: doc.size,
+    supa_path: doc.supaPath,
+    supa_url:  doc.src
+  }).catch(()=>{});
 }
 
-// Public save functions — async, fire-and-forget
-function saveGalleries(){
-  // Only persist user-added photos; seeds are re-built from SEEDS/SEED_PHOTOS on load
-  for(const [id, arr] of Object.entries(galleries)){
-    const userPhotos = arr.filter(p=>p.user);
-    idbSet(STORE_PHOTOS, id, userPhotos).catch(()=>{});
+// Save gender override to Supabase DB
+async function saveGenderToDB(docId, gender){
+  await fetch(`${SUPA_URL}/rest/v1/cd_gender`, {
+    method: "POST",
+    headers: {
+      "apikey":        SUPA_KEY,
+      "Authorization": `Bearer ${SUPA_KEY}`,
+      "Content-Type":  "application/json",
+      "Prefer":        "resolution=merge-duplicates"
+    },
+    body: JSON.stringify({ doc_id: docId, gender: gender, updated_at: new Date().toISOString() })
+  }).catch(()=>{});
+}
+
+// Delete photo row from DB
+async function deletePhotoFromDB(supaPath){
+  await dbDelete("cd_photos", "supa_path", supaPath).catch(()=>{});
+}
+
+// Delete doc row from DB
+async function deleteDocFromDB(supaPath){
+  await dbDelete("cd_docs", "supa_path", supaPath).catch(()=>{});
+}
+
+// Load ALL data from Supabase DB → populate galleries + docFiles + genderOv
+async function loadFromSupabase(){
+  // Photos
+  const photos = await dbSelect("cd_photos", "order=created_at.asc");
+  for(const row of photos){
+    if(galleries[row.doc_id] !== undefined){
+      // Get fresh signed URL
+      let url = row.supa_url;
+      try{ url = await supaSign(row.supa_path); } catch(e){}
+      // Avoid duplicates (seed photos have no supaPath)
+      const exists = galleries[row.doc_id].some(p=>p.supaPath===row.supa_path);
+      if(!exists){
+        galleries[row.doc_id].push({
+          src:      url,
+          supaPath: row.supa_path,
+          name:     row.name,
+          user:     true
+        });
+      }
+    }
+  }
+
+  // Docs
+  const docs = await dbSelect("cd_docs", "order=created_at.asc");
+  for(const row of docs){
+    if(docFiles[row.doc_id] !== undefined){
+      let url = row.supa_url;
+      try{ url = await supaSign(row.supa_path); } catch(e){}
+      const exists = docFiles[row.doc_id].some(d=>d.supaPath===row.supa_path);
+      if(!exists){
+        docFiles[row.doc_id].push({
+          name:      row.name,
+          type:      row.file_type,
+          size:      row.file_size,
+          src:       url,
+          supaPath:  row.supa_path
+        });
+      }
+    }
+  }
+
+  // Gender overrides
+  const genders = await dbSelect("cd_gender");
+  for(const row of genders){
+    genderOv[row.doc_id] = row.gender;
   }
 }
 
-function saveDocs(){
-  for(const [id, arr] of Object.entries(docFiles)){
-    idbSet(STORE_DOCS, id, arr).catch(()=>{});
-  }
-}
-
-function saveGender(){
-  for(const [id, val] of Object.entries(genderOv)){
-    idbSet(STORE_GENDER, id, val).catch(()=>{});
-  }
-}
+// Compatibility stubs — IndexedDB no longer needed for new uploads
+// Kept so existing cached data still loads on first sync
+function saveGalleries(){ /* now saved to Supabase DB per-upload */ }
+function saveDocs(){       /* now saved to Supabase DB per-upload */ }
+function saveGender(){     /* now saved to Supabase DB per-upload */ }
 
 // ── BOOT: open DB → seed galleries → load persisted data → render ────────────
 function seedGalleries(){
@@ -710,42 +775,23 @@ function seedGalleries(){
 }
 
 async function bootApp(){
-  try {
-    await openDB();
-
-    // Seed base galleries first
-    seedGalleries();
-
-    // Load saved photos (user-added) and overlay on top of seeds
-    const savedPhotos = await idbGetAll(STORE_PHOTOS);
-    for(const [id, arr] of Object.entries(savedPhotos)){
-      if(arr && arr.length && galleries[id] !== undefined){
-        // Remove old user photos from seed array, append saved ones
-        galleries[id] = galleries[id].filter(p=>!p.user).concat(arr);
-      }
-    }
-
-    // Load saved docs
-    const savedDocs = await idbGetAll(STORE_DOCS);
-    for(const [id, arr] of Object.entries(savedDocs)){
-      if(arr && docFiles[id] !== undefined) docFiles[id] = arr;
-    }
-
-    // Load saved gender overrides
-    const savedGender = await idbGetAll(STORE_GENDER);
-    for(const [id, val] of Object.entries(savedGender)){
-      genderOv[id] = val;
-    }
-
-  } catch(err){
-    console.warn("IndexedDB unavailable:", err);
-    seedGalleries();
-  }
-
-  // Render immediately with cached data, then refresh signed URLs in background
+  // 1. Seed base galleries from embedded data (instant)
+  seedGalleries();
+  // 2. Render immediately so page isn't blank while loading from cloud
   renderAll();
-  // Refresh signed URLs async (signed URLs are valid 1 year, but refresh on load)
-  refreshSignedUrls().catch(()=>{});
+  showToast("🔄 Syncing from cloud…");
+
+  try {
+    // 3. Load all user-uploaded data from Supabase DB
+    await loadFromSupabase();
+    // 4. Re-render with full cloud data
+    renderAll();
+    updateTotalCount();
+    showToast("✅ Synced from cloud");
+  } catch(err){
+    console.warn("Supabase sync failed:", err);
+    showToast("⚠️ Cloud sync failed — showing local data only");
+  }
 }
 
 // ── HELPERS ──────────────────────────────────────────────
@@ -1039,7 +1085,7 @@ function cardHTML(doc,clinicId,secId){
 function setGender(docId,clinicId,secId,sel){
   const val = sel.value;
   genderOv[docId] = val;
-  saveGender();
+  saveGenderToDB(docId, val);
   // update dot colour immediately without full re-render
   const card = document.getElementById("card_"+docId);
   if(card){
@@ -1063,7 +1109,9 @@ async function addDocs(docId,clinicId,secId,input){
     const path=`docs/${docId}/${Date.now()}_${i}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
     try{
       const url = await supaUpload(path, file);
-      docFiles[docId].push({name:file.name, type:file.type||"application/octet-stream", src:url, supaPath:path, size:file.size});
+      const docEntry = {name:file.name, type:file.type||"application/octet-stream", src:url, supaPath:path, size:file.size};
+      docFiles[docId].push(docEntry);
+      await saveDocToDB(docId, docEntry);
       uploaded++;
     } catch(err){
       showToast(`⚠️ Upload failed: ${file.name}`);
@@ -1082,7 +1130,10 @@ function deleteDoc(docId,idx,clinicId,secId){
   const name=doc?.name||"file";
   docFiles[docId].splice(idx,1);
   saveDocs();
-  if(doc && doc.supaPath) supaDelete(doc.supaPath).catch(()=>{});
+  if(doc && doc.supaPath){
+    supaDelete(doc.supaPath).catch(()=>{});
+    deleteDocFromDB(doc.supaPath);
+  }
   showToast(`🗑️ Document removed: ${name}`);
   refreshCard(docId,clinicId,secId);
 }
@@ -1118,7 +1169,9 @@ async function addPhotos(docId,clinicId,secId,input){
     const path=`photos/${docId}/${Date.now()}_${i}.${ext}`;
     try{
       const url = await supaUpload(path, file);
-      galleries[docId].push({src:url, supaPath:path, name:file.name||`${docId}_${base+i+1}.${ext}`, user:true});
+      const photoEntry = {src:url, supaPath:path, name:file.name||`${docId}_${base+i+1}.${ext}`, user:true};
+      galleries[docId].push(photoEntry);
+      await savePhotoToDB(docId, photoEntry);
       uploaded++;
     } catch(err){
       showToast(`⚠️ Upload failed: ${file.name}`);
@@ -1163,7 +1216,10 @@ function deletePhoto(docId,clinicId,secId){
   cardIndex[docId]=Math.max(0,_delIdx-1);
   saveGalleries();
   // Also delete from Supabase if it was uploaded there
-  if(photo && photo.supaPath) supaDelete(photo.supaPath).catch(()=>{});
+  if(photo && photo.supaPath){
+    supaDelete(photo.supaPath).catch(()=>{});
+    deletePhotoFromDB(photo.supaPath);
+  }
   showToast(`🗑️ Photo removed for ${getDrName(docId)}`);
   renderAll();
 }
