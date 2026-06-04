@@ -342,8 +342,20 @@ async function supaUpload(path,file){
     headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':file.type||'application/octet-stream','x-upsert':'true'},
     body:file
   });
-  if(!res.ok){const t=await res.text();let m=t;try{m=JSON.parse(t).message||t;}catch(e){}throw new Error(m);}
-  return supaSign(path);
+  if(!res.ok){
+    const t=await res.text();
+    let m=t;try{m=JSON.parse(t).message||t;}catch(e){}
+    throw new Error(m);
+  }
+  // Try signed URL, fall back to reading the file as data URL for display
+  const signed=await supaSign(path);
+  if(signed) return signed;
+  // Fallback: read file as dataURL for immediate display
+  return await new Promise(function(resolve){
+    var r=new FileReader();
+    r.onload=function(e){resolve(e.target.result);};
+    r.readAsDataURL(file);
+  });
 }
 async function supaSign(path){
   const res=await fetch(SUPA_URL+'/storage/v1/object/sign/'+SUPA_BUCKET+'/'+path,{
@@ -351,8 +363,9 @@ async function supaSign(path){
     headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
     body:JSON.stringify({expiresIn:31536000})
   });
-  if(!res.ok) throw new Error('Sign failed '+res.status);
+  if(!res.ok) return null;
   const d=await res.json();
+  if(!d.signedURL) return null;
   return SUPA_URL+d.signedURL;
 }
 async function supaDelete(path){
@@ -415,8 +428,9 @@ async function loadFromDB(){
       if(!galleries[r.doc_id]) continue;
       var exists=galleries[r.doc_id].some(function(p){return p.supaPath===r.supa_path;});
       if(!exists){
-        var url=r.supa_url||'';
+        var url=null;
         try{url=await supaSign(r.supa_path);}catch(e){}
+        if(!url) continue; // Skip rows with invalid/expired paths
         galleries[r.doc_id].push({src:url,supaPath:r.supa_path,name:r.name,user:true});
       }
     }
