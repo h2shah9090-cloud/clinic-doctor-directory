@@ -405,29 +405,25 @@ function initGalleries(){
 // ── LOAD DB
 async function loadFromDB(){
   try {
-    var photos=await dbSelect('cd_photos','order=created_at.asc');
+    var results=await Promise.all([
+      dbSelect('cd_photos','order=created_at.asc'),
+      dbSelect('cd_docs','order=created_at.asc'),
+      dbSelect('cd_gender','')
+    ]);
+    var photos=results[0],docs=results[1],genders=results[2];
     for(var i=0;i<photos.length;i++){
       var r=photos[i];
       if(!galleries[r.doc_id]) continue;
       var exists=galleries[r.doc_id].some(function(p){return p.supaPath===r.supa_path;});
-      if(!exists){
-        var url=await supaSign(r.supa_path);
-        galleries[r.doc_id].push({src:url,supaPath:r.supa_path,name:r.name,user:true});
-      }
+      if(!exists) galleries[r.doc_id].push({src:supaSign(r.supa_path),supaPath:r.supa_path,name:r.name,user:true});
     }
-    var docs=await dbSelect('cd_docs','order=created_at.asc');
     for(var j=0;j<docs.length;j++){
       var dr=docs[j];
       if(!docFiles[dr.doc_id]) continue;
       var dex=docFiles[dr.doc_id].some(function(d){return d.supaPath===dr.supa_path;});
-      if(!dex){
-        var du=dr.supa_url||'';
-        try{du=await supaSign(dr.supa_path);}catch(e){}
-        docFiles[dr.doc_id].push({name:dr.name,type:dr.file_type,size:dr.file_size,src:du,supaPath:dr.supa_path});
-      }
+      if(!dex) docFiles[dr.doc_id].push({name:dr.name,type:dr.file_type,size:dr.file_size,src:supaSign(dr.supa_path),supaPath:dr.supa_path});
     }
-    var genders=await dbSelect('cd_gender','');
-    for(var k=0;k<genders.length;k++){genderOv[genders[k].doc_id]=genders[k].gender;}
+    for(var k=0;k<genders.length;k++) genderOv[genders[k].doc_id]=genders[k].gender;
   } catch(err){console.warn('DB load failed:',err);}
 }
 
@@ -436,16 +432,16 @@ async function boot(){
   initGalleries();
   renderSidebar();
   var first=CLINICS.find(function(c){return c.status!=='stopped';});
-  if(first) setActiveClinic(first.id);
+  if(first) setActiveClinic(first.id);  // renders panel immediately with seed data
   updateStats();
+  // Sync in background — page is already visible with seed photos
   var bar=document.createElement('div');
   bar.className='sync-bar';
   document.body.appendChild(bar);
   try{
     await loadFromDB();
-    renderPanel();
+    renderPanel();  // re-render with any uploaded photos from DB
     updateStats();
-    showToast('\u2705 Synced from cloud');
   } catch(e){console.warn('Sync failed:',e);}
   finally{bar.remove();}
 }
