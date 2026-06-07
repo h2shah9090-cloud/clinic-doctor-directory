@@ -453,9 +453,20 @@ async function loadFromDB(){
     var results=await Promise.all([
       dbSelect('cd_photos','order=created_at.asc'),
       dbSelect('cd_docs','order=created_at.asc'),
-      dbSelect('cd_gender','')
+      dbSelect('cd_gender',''),
+      dbSelect('cd_removed_seeds','')
     ]);
-    var photos=results[0],docs=results[1],genders=results[2];
+    var photos=results[0],docs=results[1],genders=results[2],removedSeeds=results[3];
+    // Remove any seeds that were explicitly deleted
+    for(var rs=0;rs<removedSeeds.length;rs++){
+      var docId=removedSeeds[rs].doc_id;
+      var seedKey=removedSeeds[rs].seed_key;
+      if(galleries[docId]){
+        galleries[docId]=galleries[docId].filter(function(p){
+          return !(p.supaPath===seedKey||(!p.user&&!p.supaPath));
+        });
+      }
+    }
     for(var i=0;i<photos.length;i++){
       var r=photos[i];
       if(!galleries[r.doc_id]) continue;
@@ -500,10 +511,13 @@ async function saveChanges(){
   for(var j=0;j<pendingDeletes.length;j++){
     var d=pendingDeletes[j];
     try{
-      console.log('Deleting:', d.supaPath);
-      await supaDelete(d.supaPath);
-      await dbDelete(d.dbTable,'supa_path',d.supaPath);
-      console.log('Deleted OK:', d.supaPath);
+      if(d.type==='seed'){
+        // Record seed removal permanently in DB
+        await dbUpsert('cd_removed_seeds','doc_id',{doc_id:d.docId,seed_key:d.seedKey,removed_at:new Date().toISOString()});
+      } else {
+        await supaDelete(d.supaPath);
+        await dbDelete(d.dbTable,'supa_path',d.supaPath);
+      }
       ok++;
     } catch(err){console.error('Save delete failed:',err);fail++;}
   }
@@ -727,11 +741,15 @@ async function deletePhoto(docId,clinicId,secId){
   var di=cardIdx[docId]||0;var photo=g[di];
   g.splice(di,1);cardIdx[docId]=Math.max(0,di-1);
   if(photo&&photo.pending){
-    // Never saved — remove from pendingAdds only
+    // Staged but never saved — just remove from pendingAdds
     var pi=pendingAdds.findIndex(function(p){return p.path===photo.supaPath;});
     if(pi!==-1) pendingAdds.splice(pi,1);
+  } else if(!photo.user&&!photo.supaPath){
+    // Seed photo — record removal in DB so it stays gone after refresh
+    var seedKey=photo.name||docId+'_seed';
+    pendingDeletes.push({type:'seed',docId:docId,seedKey:seedKey});
   } else if(photo&&photo.supaPath&&photo.supaPath.indexOf('photos/')===0){
-    // Saved photo — stage for deletion on Save
+    // Uploaded photo — stage for Supabase deletion
     pendingDeletes.push({type:'photo',supaPath:photo.supaPath,dbTable:'cd_photos',docId:docId,name:photo.name});
   }
   showToast('\ud83d\uddd1\ufe0f Removed — click Save to confirm');
