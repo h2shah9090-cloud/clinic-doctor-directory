@@ -363,11 +363,14 @@ function supaSign(path){
   return Promise.resolve(SUPA_URL+'/storage/v1/object/public/'+SUPA_BUCKET+'/'+path);
 }
 async function supaDelete(path){
-  fetch(SUPA_URL+'/storage/v1/object/'+SUPA_BUCKET,{
-    method:'DELETE',
-    headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
-    body:JSON.stringify({prefixes:[path]})
-  }).catch(function(){});
+  // Correct endpoint: DELETE /storage/v1/object/bucket/path
+  try {
+    const res = await fetch(SUPA_URL+'/storage/v1/object/'+SUPA_BUCKET+'/'+path,{
+      method:'DELETE',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY}
+    });
+    if(!res.ok) console.warn('Storage delete failed:',res.status, await res.text());
+  } catch(e){ console.warn('supaDelete error:',e); }
 }
 
 // ── DB
@@ -388,9 +391,12 @@ async function dbUpsert(table,conflict,row){
   if(!res.ok) console.warn('upsert fail',res.status,await res.text());
 }
 async function dbDelete(table,col,val){
-  fetch(SUPA_URL+'/rest/v1/'+table+'?'+col+'=eq.'+encodeURIComponent(val),{
-    method:'DELETE',headers:dbH()
-  }).catch(function(){});
+  try {
+    const res=await fetch(SUPA_URL+'/rest/v1/'+table+'?'+col+'=eq.'+encodeURIComponent(val),{
+      method:'DELETE',headers:dbH()
+    });
+    if(!res.ok) console.warn('DB delete failed:',res.status,await res.text());
+  } catch(e){ console.warn('dbDelete error:',e); }
 }
 
 // ── INIT GALLERIES
@@ -629,11 +635,14 @@ async function downloadAllPhotos(docId,name){
     await new Promise(function(r){setTimeout(r,400);});
   }
 }
-function deletePhoto(docId,clinicId,secId){
+async function deletePhoto(docId,clinicId,secId){
   var g=galleries[docId];if(!g||!g.length) return;
   var di=cardIdx[docId]||0;var photo=g[di];
   g.splice(di,1);cardIdx[docId]=Math.max(0,di-1);
-  if(photo&&photo.supaPath&&photo.supaPath.indexOf('photos/')===0){supaDelete(photo.supaPath);dbDelete('cd_photos','supa_path',photo.supaPath);}
+  if(photo&&photo.supaPath&&photo.supaPath.indexOf('photos/')===0){
+    supaDelete(photo.supaPath);
+    dbDelete('cd_photos','supa_path',photo.supaPath);
+  }
   showToast('\ud83d\uddd1\ufe0f Photo removed');refreshCard(docId,clinicId,secId);updateStats();
 }
 
