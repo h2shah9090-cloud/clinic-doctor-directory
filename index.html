@@ -503,8 +503,9 @@ async function loadFromDB(){
       if(!galleries[r.doc_id]) continue;
       var exists=galleries[r.doc_id].some(function(p){return p.supaPath===r.supa_path;});
       if(!exists){
-        var displayUrl=r.thumb_url||supaSign(r.supa_path); // prefer thumb for display
-        var origUrl=supaSign(r.supa_path);                 // always orig for download
+        // Use stored URLs directly — bucket is public, no signing needed
+        var displayUrl=r.thumb_url||r.supa_url||supaSign(r.supa_path);
+        var origUrl=r.supa_url||supaSign(r.supa_path);
         galleries[r.doc_id].push({src:displayUrl,origUrl:origUrl,origPath:r.supa_path,thumbPath:r.thumb_path,name:r.name,user:true});
       }
     }
@@ -542,18 +543,22 @@ async function saveChanges(){
       if(a.thumbBlob){
         try{ thumbUrl=await supaUpload(a.thumbPath,a.thumbBlob); } catch(e){ console.warn('Thumb upload failed:',e); }
       }
-      // Update entry to use thumb for display, orig for download
-      a.entry.src=thumbUrl;
-      a.entry.origUrl=origUrl;
-      a.entry.thumbUrl=thumbUrl;
+      // Update entry — thumb for display, orig for download
+      a.entry.src=thumbUrl;        // display uses thumb
+      a.entry.origUrl=origUrl;     // download uses orig
+      a.entry.supa_url=origUrl;    // store for loadFromDB
+      a.entry.thumb_url=thumbUrl;
       a.entry.origPath=a.origPath;
       a.entry.thumbPath=a.thumbPath;
       a.entry.pending=false;
       if(a.previewUrl) URL.revokeObjectURL(a.previewUrl);
       await dbUpsert('cd_photos','supa_path',{
-        doc_id:a.docId,name:a.file.name,
-        supa_path:a.origPath,supa_url:origUrl,
-        thumb_path:a.thumbPath,thumb_url:thumbUrl,
+        doc_id:a.docId,
+        name:a.file.name,
+        supa_path:a.origPath,
+        supa_url:origUrl,
+        thumb_path:a.thumbPath,
+        thumb_url:thumbUrl,
         is_user:true
       });
       ok++;
@@ -575,7 +580,8 @@ async function saveChanges(){
   }
   pendingAdds.length=0;pendingDeletes.length=0;
   updateSaveBar();
-  renderPanel();
+  renderPanel(); // re-render with final Supabase URLs
+  observeLazyImages();
   if(btn){btn.disabled=false;btn.textContent='\ud83d\udcbe Save Changes';}
   if(fail>0) showToast('\u26a0\ufe0f '+ok+' saved, '+fail+' failed');
   else showToast('\u2705 All changes saved!');
@@ -699,18 +705,7 @@ function cardHTML(doc,clinicId,secId){
   var cnt=g.length;
   var idx=cnt>0?Math.min(cardIdx[doc.id]||0,cnt-1):0;
   var effG=genderOv[doc.id]!==undefined?genderOv[doc.id]:(doc.gender||'');
-  // Lazy load helper — replaces data-src with src when in viewport
-if(!window._lazyObserver){
-  window._lazyObserver=new IntersectionObserver(function(entries){
-    entries.forEach(function(e){
-      if(e.isIntersecting){
-        var el=e.target;
-        if(el.dataset.src){el.src=el.dataset.src;delete el.dataset.src;window._lazyObserver.unobserve(el);}
-      }
-    });
-  },{rootMargin:'200px'});
-}
-var gallHtml='';
+  var gallHtml='';
   if(doc.silhouette){
     gallHtml='<div class="gallery-wrap" style="cursor:default"><div class="silhouette-wrap"><img class="silhouette-img" src="'+SILHOUETTE+'" alt=""></div><div class="privacy-badge">&#128285; Photo not displayed by request</div></div>'+
       '<div class="thumb-strip" style="justify-content:center;font-size:11px;color:var(--muted)">Privacy preference</div>';
@@ -719,7 +714,7 @@ var gallHtml='';
     var np=cnt>1?'<button class="gallery-nav prev" onclick="navCard(\''+doc.id+'\',-1,\''+clinicId+'\',\''+secId+'\')">&#8249;</button>':'';
     var nn=cnt>1?'<button class="gallery-nav next" onclick="navCard(\''+doc.id+'\',1,\''+clinicId+'\',\''+secId+'\')">&#8250;</button>':'';
     gallHtml='<div class="gallery-wrap" ondblclick="openLb(\''+doc.id+'\','+idx+')">'+
-      '<img class="gallery-img" data-src="'+g[idx].src+'" alt="'+esc(doc.name)+'">'+
+      '<img class="gallery-img" src="'+g[idx].src+'" alt="'+esc(doc.name)+'">'+
       '<span class="gallery-counter">'+(idx+1)+'/'+cnt+'</span>'+np+nn+'</div>'+
       '<div class="thumb-strip">'+thumbs+
       '<label class="thumb-add" title="Add photos"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'+
@@ -784,7 +779,7 @@ function refreshCard(docId,clinicId,secId){
     card.replaceWith(nc);
     // Observe lazy images in the new card
     if(window._lazyObserver){
-      nc.querySelectorAll('img[data-src]').forEach(function(img){window._lazyObserver.observe(img);});
+      
     }
   }
 }
@@ -906,9 +901,7 @@ function setGender(docId,sel){
 var _filterTimer=null;
 function observeLazyImages(){
   if(!window._lazyObserver) return;
-  document.querySelectorAll('img[data-src]').forEach(function(img){
-    window._lazyObserver.observe(img);
-  });
+  
 }
 function filterCards(q){
   clearTimeout(_filterTimer);
