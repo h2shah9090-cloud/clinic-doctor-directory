@@ -50,8 +50,8 @@ input,select{font-family:inherit}
 .panel-meta{font-size:12px;color:var(--muted);margin-top:4px}
 .panel-meta span{color:var(--accent)}
 .panel-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.panel-search{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--white);font-size:13px;outline:none;transition:border .2s;width:200px}
-.panel-search:focus{border-color:var(--accent)}
+.panel-search{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--white);font-size:13px;outline:2px solid transparent;transition:border .2s;width:200px}
+.panel-search:focus{border-color:var(--accent);outline:2px solid transparent}
 .panel-search::placeholder{color:var(--muted)}
 .btn-dl-all{background:var(--accent);color:#09132a;border:none;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:6px;cursor:pointer;transition:opacity .2s;white-space:nowrap}
 .btn-dl-all:hover{opacity:0.85}
@@ -96,8 +96,8 @@ input,select{font-family:inherit}
 .gender-dot.male{background:var(--blue)}
 .gender-dot.female{background:var(--pink)}
 .doctor-name{font-size:14px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.gender-select{font-size:11px;font-weight:600;padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--muted);cursor:pointer;outline:none;transition:all .2s;flex-shrink:0}
-.gender-select:hover,.gender-select:focus{border-color:var(--accent);color:var(--white)}
+.gender-select{font-size:11px;font-weight:600;padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--muted);cursor:pointer;outline:2px solid transparent;transition:all .2s;flex-shrink:0}
+.gender-select:hover,.gender-select:focus{border-color:var(--accent);color:var(--white);outline:2px solid transparent}
 .gender-select.male{border-color:#4ea8de44;color:var(--blue)}
 .gender-select.female{border-color:#f48fb144;color:var(--pink)}
 .specialty-tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;padding:3px 10px;border-radius:10px;margin-bottom:4px}
@@ -627,7 +627,7 @@ function deletePhoto(docId,clinicId,secId){
   var g=galleries[docId];if(!g||!g.length) return;
   var di=cardIdx[docId]||0;var photo=g[di];
   g.splice(di,1);cardIdx[docId]=Math.max(0,di-1);
-  if(photo&&photo.supaPath){supaDelete(photo.supaPath);dbDelete('cd_photos','supa_path',photo.supaPath);}
+  if(photo&&photo.supaPath&&photo.supaPath.indexOf('photos/')===0){supaDelete(photo.supaPath);dbDelete('cd_photos','supa_path',photo.supaPath);}
   showToast('\ud83d\uddd1\ufe0f Photo removed');refreshCard(docId,clinicId,secId);updateStats();
 }
 
@@ -733,7 +733,7 @@ document.addEventListener('keydown',function(e){
   if(e.key==='ArrowRight') lbNav(1);
   if(e.key==='ArrowLeft') lbNav(-1);
 });
-document.getElementById('lightbox').addEventListener('click',function(e){if(e.target===this) closeLb();});
+document.getElementById('lightbox').addEventListener('click',function(e){if(e.target===this&&document.getElementById('lightbox').classList.contains('open')) closeLb();});
 
 // ── STATS
 function updateStats(){
