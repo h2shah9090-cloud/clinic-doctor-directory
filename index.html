@@ -371,6 +371,36 @@ const pendingAdds=[];    // [{docId,file,path,entry}]
 const pendingDeletes=[]; // [{type:'photo'|'doc',supaPath,dbTable,docId,name}]
 
 // ── SUPABASE STORAGE
+// ── THUMBNAIL GENERATION ─────────────────────────────────────────────────
+// Generates a compressed thumbnail using canvas — browser-side, no server needed
+async function generateThumb(file, maxW, maxH, quality){
+  maxW = maxW || 400; maxH = maxH || 480; quality = quality || 0.75;
+  return new Promise(function(resolve, reject){
+    var img = new Image();
+    var blobUrl = URL.createObjectURL(file);
+    img.onload = function(){
+      var sw = img.naturalWidth, sh = img.naturalHeight;
+      // Maintain aspect ratio within maxW x maxH
+      var ratio = Math.min(maxW/sw, maxH/sh, 1); // never upscale
+      var tw = Math.round(sw * ratio);
+      var th = Math.round(sh * ratio);
+      var canvas = document.createElement('canvas');
+      canvas.width = tw; canvas.height = th;
+      var ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, tw, th);
+      URL.revokeObjectURL(blobUrl);
+      canvas.toBlob(function(blob){
+        if(!blob) reject(new Error('Canvas toBlob failed'));
+        else resolve(blob);
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = function(){ URL.revokeObjectURL(blobUrl); reject(new Error('Image load failed')); };
+    img.src = blobUrl;
+  });
+}
+
 async function supaUpload(path,file){
   const res=await fetch(SUPA_URL+'/storage/v1/object/'+SUPA_BUCKET+'/'+path,{
     method:'POST',
@@ -471,7 +501,11 @@ async function loadFromDB(){
       var r=photos[i];
       if(!galleries[r.doc_id]) continue;
       var exists=galleries[r.doc_id].some(function(p){return p.supaPath===r.supa_path;});
-      if(!exists) galleries[r.doc_id].push({src:supaSign(r.supa_path),supaPath:r.supa_path,name:r.name,user:true});
+      if(!exists){
+        var displayUrl=r.thumb_url||supaSign(r.supa_path); // prefer thumb for display
+        var origUrl=supaSign(r.supa_path);                 // always orig for download
+        galleries[r.doc_id].push({src:displayUrl,origUrl:origUrl,origPath:r.supa_path,thumbPath:r.thumb_path,name:r.name,user:true});
+      }
     }
     for(var j=0;j<docs.length;j++){
       var dr=docs[j];
@@ -500,10 +534,27 @@ async function saveChanges(){
   for(var i=0;i<pendingAdds.length;i++){
     var a=pendingAdds[i];
     try{
-      var url=await supaUpload(a.path,a.file);
-      a.entry.src=url;a.entry.pending=false;
-      if(a.blobUrl) URL.revokeObjectURL(a.blobUrl); // free memory
-      await dbUpsert('cd_photos','supa_path',{doc_id:a.docId,name:a.file.name,supa_path:a.path,supa_url:url,is_user:true});
+      // Upload original at full quality
+      var origUrl=await supaUpload(a.origPath,a.file);
+      // Upload thumbnail (compressed version for display)
+      var thumbUrl=origUrl; // fallback to orig if thumb fails
+      if(a.thumbBlob){
+        try{ thumbUrl=await supaUpload(a.thumbPath,a.thumbBlob); } catch(e){ console.warn('Thumb upload failed:',e); }
+      }
+      // Update entry to use thumb for display, orig for download
+      a.entry.src=thumbUrl;
+      a.entry.origUrl=origUrl;
+      a.entry.thumbUrl=thumbUrl;
+      a.entry.origPath=a.origPath;
+      a.entry.thumbPath=a.thumbPath;
+      a.entry.pending=false;
+      if(a.previewUrl) URL.revokeObjectURL(a.previewUrl);
+      await dbUpsert('cd_photos','supa_path',{
+        doc_id:a.docId,name:a.file.name,
+        supa_path:a.origPath,supa_url:origUrl,
+        thumb_path:a.thumbPath,thumb_url:thumbUrl,
+        is_user:true
+      });
       ok++;
     } catch(err){console.error('Save add failed:',err);showToast('\u26a0\ufe0f Upload failed: '+err.message);fail++;}
   }
@@ -581,7 +632,7 @@ function renderSidebar(){
   });
   el.innerHTML=html;
 }
-function setActiveClinic(id){activeClinic=id;renderSidebar();renderPanel();}
+function setActiveClinic(id){activeClinic=id;renderSidebar();renderPanel();observeLazyImages();}
 
 // ── ESC HTML
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -615,7 +666,18 @@ function cardHTML(doc,clinicId,secId){
   var cnt=g.length;
   var idx=cnt>0?Math.min(cardIdx[doc.id]||0,cnt-1):0;
   var effG=genderOv[doc.id]!==undefined?genderOv[doc.id]:(doc.gender||'');
-  var gallHtml='';
+  // Lazy load helper — replaces data-src with src when in viewport
+if(!window._lazyObserver){
+  window._lazyObserver=new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){
+        var el=e.target;
+        if(el.dataset.src){el.src=el.dataset.src;delete el.dataset.src;window._lazyObserver.unobserve(el);}
+      }
+    });
+  },{rootMargin:'200px'});
+}
+var gallHtml='';
   if(doc.silhouette){
     gallHtml='<div class="gallery-wrap" style="cursor:default"><div class="silhouette-wrap"><img class="silhouette-img" src="'+SILHOUETTE+'" alt=""></div><div class="privacy-badge">&#128285; Photo not displayed by request</div></div>'+
       '<div class="thumb-strip" style="justify-content:center;font-size:11px;color:var(--muted)">Privacy preference</div>';
@@ -624,7 +686,7 @@ function cardHTML(doc,clinicId,secId){
     var np=cnt>1?'<button class="gallery-nav prev" onclick="navCard(\''+doc.id+'\',-1,\''+clinicId+'\',\''+secId+'\')">&#8249;</button>':'';
     var nn=cnt>1?'<button class="gallery-nav next" onclick="navCard(\''+doc.id+'\',1,\''+clinicId+'\',\''+secId+'\')">&#8250;</button>':'';
     gallHtml='<div class="gallery-wrap" ondblclick="openLb(\''+doc.id+'\','+idx+')">'+
-      '<img class="gallery-img" src="'+g[idx].src+'" alt="'+esc(doc.name)+'">'+
+      '<img class="gallery-img" data-src="'+g[idx].src+'" alt="'+esc(doc.name)+'">'+
       '<span class="gallery-counter">'+(idx+1)+'/'+cnt+'</span>'+np+nn+'</div>'+
       '<div class="thumb-strip">'+thumbs+
       '<label class="thumb-add" title="Add photos"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'+
@@ -685,7 +747,13 @@ function refreshCard(docId,clinicId,secId){
   var tmp=document.createElement('div');
   tmp.innerHTML=cardHTML(doc,clinicId,secId);
   var nc=tmp.querySelector('.doctor-card');
-  if(nc) card.replaceWith(nc);
+  if(nc){
+    card.replaceWith(nc);
+    // Observe lazy images in the new card
+    if(window._lazyObserver){
+      nc.querySelectorAll('img[data-src]').forEach(function(img){window._lazyObserver.observe(img);});
+    }
+  }
 }
 
 // ── ADD PHOTOS
@@ -703,14 +771,19 @@ async function addPhotos(docId,clinicId,secId,input){
   if(!files.length) return;
   for(var i=0;i<files.length;i++){
     var file=files[i];
-    var ext=file.name.split('.').pop()||'jpg';
-    var path='photos/'+docId+'/'+Date.now()+'_'+i+'.'+ext;
-    // Use blob URL for preview — zero quality loss, uses original file
-    var localUrl=URL.createObjectURL(file);
-    var entry={src:localUrl,supaPath:path,name:file.name,user:true,pending:true};
+    var ts=Date.now()+'_'+i;
+    var ext=(file.name.split('.').pop()||'jpg').toLowerCase();
+    var origPath ='photos/'+docId+'/orig/'+ts+'.'+ext;
+    var thumbPath='photos/'+docId+'/thumb/'+ts+'.jpg';
+    // Generate thumb preview immediately for the UI (fast, local)
+    var thumbBlob=null;
+    try{ thumbBlob=await generateThumb(file,400,480,0.75); } catch(e){ console.warn('Thumb gen failed:',e); }
+    // Show thumb blob URL in UI — high quality preview, lightweight
+    var previewUrl=thumbBlob?URL.createObjectURL(thumbBlob):URL.createObjectURL(file);
+    var entry={src:previewUrl,origPath:origPath,thumbPath:thumbPath,name:file.name,user:true,pending:true};
     galleries[docId].push(entry);
     cardIdx[docId]=galleries[docId].length-1;
-    pendingAdds.push({docId:docId,file:file,path:path,entry:entry,blobUrl:localUrl});
+    pendingAdds.push({docId:docId,file:file,thumbBlob:thumbBlob,origPath:origPath,thumbPath:thumbPath,entry:entry,previewUrl:previewUrl});
   }
   refreshCard(docId,clinicId,secId);
   updateStats();
@@ -725,7 +798,10 @@ function navCard(docId,dir,clinicId,secId){
 function setIdx(docId,idx,clinicId,secId){cardIdx[docId]=idx;refreshCard(docId,clinicId,secId);}
 function downloadPhoto(docId){
   var g=galleries[docId];if(!g||!g.length) return;
-  var p=g[cardIdx[docId]||0];var a=document.createElement('a');a.href=p.src;a.download=p.name;a.click();
+  var p=g[cardIdx[docId]||0];
+  // Always download original — never the thumbnail
+  var url=p.origUrl||p.src;
+  var a=document.createElement('a');a.href=url;a.download=p.name;a.click();
 }
 async function downloadAllPhotos(docId,name){
   var g=galleries[docId];if(!g||!g.length) return;
@@ -795,6 +871,12 @@ function setGender(docId,sel){
 
 // ── FILTER
 var _filterTimer=null;
+function observeLazyImages(){
+  if(!window._lazyObserver) return;
+  document.querySelectorAll('img[data-src]').forEach(function(img){
+    window._lazyObserver.observe(img);
+  });
+}
 function filterCards(q){
   clearTimeout(_filterTimer);
   _filterTimer=setTimeout(function(){
