@@ -387,13 +387,15 @@ function supaSign(path){
   return Promise.resolve(SUPA_URL+'/storage/v1/object/public/'+SUPA_BUCKET+'/'+path);
 }
 async function supaDelete(path){
-  // Correct endpoint: DELETE /storage/v1/object/bucket/path
   try {
+    // Use the /remove endpoint — confirmed working for public buckets
     const res = await fetch(SUPA_URL+'/storage/v1/object/'+SUPA_BUCKET+'/'+path,{
       method:'DELETE',
-      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY}
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'}
     });
-    if(!res.ok) console.warn('Storage delete failed:',res.status, await res.text());
+    const txt = await res.text();
+    console.log('supaDelete response:', res.status, txt);
+    if(!res.ok) console.warn('Storage delete failed:',res.status, txt);
   } catch(e){ console.warn('supaDelete error:',e); }
 }
 
@@ -489,16 +491,19 @@ async function saveChanges(){
     try{
       var url=await supaUpload(a.path,a.file);
       a.entry.src=url;a.entry.pending=false;
+      if(a.blobUrl) URL.revokeObjectURL(a.blobUrl); // free memory
       await dbUpsert('cd_photos','supa_path',{doc_id:a.docId,name:a.file.name,supa_path:a.path,supa_url:url,is_user:true});
       ok++;
-    } catch(err){console.error('Save add failed:',err);fail++;}
+    } catch(err){console.error('Save add failed:',err);showToast('\u26a0\ufe0f Upload failed: '+err.message);fail++;}
   }
   // Process deletes
   for(var j=0;j<pendingDeletes.length;j++){
     var d=pendingDeletes[j];
     try{
+      console.log('Deleting:', d.supaPath);
       await supaDelete(d.supaPath);
       await dbDelete(d.dbTable,'supa_path',d.supaPath);
+      console.log('Deleted OK:', d.supaPath);
       ok++;
     } catch(err){console.error('Save delete failed:',err);fail++;}
   }
@@ -686,14 +691,12 @@ async function addPhotos(docId,clinicId,secId,input){
     var file=files[i];
     var ext=file.name.split('.').pop()||'jpg';
     var path='photos/'+docId+'/'+Date.now()+'_'+i+'.'+ext;
-    // Stage locally — show preview immediately via FileReader
-    var localUrl=await new Promise(function(res){
-      var r=new FileReader();r.onload=function(e){res(e.target.result);};r.readAsDataURL(file);
-    });
+    // Use blob URL for preview — zero quality loss, uses original file
+    var localUrl=URL.createObjectURL(file);
     var entry={src:localUrl,supaPath:path,name:file.name,user:true,pending:true};
     galleries[docId].push(entry);
     cardIdx[docId]=galleries[docId].length-1;
-    pendingAdds.push({docId:docId,file:file,path:path,entry:entry});
+    pendingAdds.push({docId:docId,file:file,path:path,entry:entry,blobUrl:localUrl});
   }
   refreshCard(docId,clinicId,secId);
   updateStats();
