@@ -680,7 +680,7 @@ function addMorePhotos(docId){
   input.click();
 }
 async function addPhotos(docId,clinicId,secId,input){
-  var files=Array.from(input.files);
+  var files=input.files?Array.from(input.files):(Array.isArray(input)?input:[]);
   if(!files.length) return;
   for(var i=0;i<files.length;i++){
     var file=files[i];
@@ -737,7 +737,7 @@ async function deletePhoto(docId,clinicId,secId){
 
 // ── DOCS
 async function addDocs(docId,clinicId,secId,input){
-  var files=Array.from(input.files);if(!files.length) return;
+  var files=input.files?Array.from(input.files):(Array.isArray(input)?input:[]);if(!files.length) return;
   showToast('\u2b06\ufe0f Uploading '+files.length+' doc'+(files.length>1?'s':'')+'\u2026');
   var ok=0;
   for(var i=0;i<files.length;i++){
@@ -799,8 +799,8 @@ function onDrop(e,docId,clinicId,secId){
   var files=Array.from(e.dataTransfer.files);
   var imgs=files.filter(function(f){return f.type.indexOf('image/')===0;});
   var docs=files.filter(function(f){return f.type.indexOf('image/')!==0;});
-  if(imgs.length) addPhotos(docId,clinicId,secId,{files:imgs});
-  if(docs.length) addDocs(docId,clinicId,secId,{files:docs});
+  if(imgs.length) addPhotos(docId,clinicId,secId,imgs);
+  if(docs.length) addDocs(docId,clinicId,secId,docs);
 }
 
 // ── DOWNLOAD CLINIC
