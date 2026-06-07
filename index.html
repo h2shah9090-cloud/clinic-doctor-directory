@@ -824,6 +824,28 @@ function navCard(docId,dir,clinicId,secId){
   refreshCard(docId,clinicId,secId);
 }
 function setIdx(docId,idx,clinicId,secId){cardIdx[docId]=idx;refreshCard(docId,clinicId,secId);}
+// Fetch image as blob then download — bypasses cross-origin <a download> restriction
+async function fetchAndDownload(url, filename){
+  try {
+    showToast('\u2b07\ufe0f Preparing download...');
+    var res = await fetch(url);
+    if(!res.ok) throw new Error('Fetch failed: '+res.status);
+    var blob = await res.blob();
+    var blobUrl = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 1000);
+  } catch(e){
+    console.error('Download failed:', e);
+    // Fallback: open in new tab
+    window.open(url, '_blank');
+  }
+}
+
 function downloadPhoto(docId){
   var g=galleries[docId];if(!g||!g.length) return;
   var p=g[cardIdx[docId]||0];
@@ -842,8 +864,7 @@ function downloadPhoto(docId){
   var idx=cardIdx[docId]||0;
   var ext=(p.name&&p.name.split('.').pop())||'jpg';
   var filename=docName+'_'+(idx+1)+'.'+ext;
-  var a=document.createElement('a');a.href=url;a.download=filename;
-  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  fetchAndDownload(url, filename);
 }
 async function downloadAllPhotos(docId,name){
   var g=galleries[docId];if(!g||!g.length) return;
@@ -858,9 +879,8 @@ async function downloadAllPhotos(docId,name){
     }
     var ext=(p.name&&p.name.split('.').pop())||'jpg';
     var filename=safeName+'_'+(i+1)+'.'+ext;
-    var a=document.createElement('a');a.href=url;a.download=filename;
-    document.body.appendChild(a);a.click();document.body.removeChild(a);
-    await new Promise(function(r){setTimeout(r,400);});
+    await fetchAndDownload(url, filename);
+    await new Promise(function(r){setTimeout(r,600);});
   }
 }
 async function deletePhoto(docId,clinicId,secId){
@@ -965,9 +985,8 @@ async function downloadClinic(clinicId){
   for(var i=0;i<all.length;i++){
     var p=all[i];
     var url=p.origUrl||p.src; // always original
-    var a=document.createElement('a');a.href=url;a.download=p.name;
-    document.body.appendChild(a);a.click();document.body.removeChild(a);
-    await new Promise(function(r){setTimeout(r,400);});
+    await fetchAndDownload(url, p.name);
+    await new Promise(function(r){setTimeout(r,600);});
   }
 }
 
