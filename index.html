@@ -129,6 +129,21 @@ input,select{font-family:inherit}
 .lb-thumb.active{border-color:var(--accent);opacity:1}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--navy2);color:var(--white);border:1px solid rgba(0,196,180,0.3);border-radius:10px;padding:11px 20px;font-size:13px;font-weight:500;z-index:9999;pointer-events:none;white-space:nowrap;transition:transform .3s,opacity .3s;opacity:0;box-shadow:0 8px 32px rgba(0,0,0,0.5)}
 .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+.save-bar{position:fixed;bottom:0;left:0;right:0;z-index:9980;
+  background:linear-gradient(135deg,#09132a,#112040);
+  border-top:1px solid rgba(0,196,180,0.3);
+  padding:12px 24px;display:none;align-items:center;justify-content:space-between;gap:12px}
+.save-bar.visible{display:flex}
+.save-bar-msg{font-size:13px;color:var(--muted)}
+.save-bar-msg span{color:var(--accent);font-weight:600}
+.save-bar-actions{display:flex;gap:8px}
+.btn-save{background:var(--accent);color:#09132a;border:none;border-radius:8px;
+  padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;transition:opacity .2s}
+.btn-save:hover{opacity:0.85}
+.btn-save:disabled{opacity:0.5;cursor:not-allowed}
+.btn-discard{background:transparent;color:var(--muted);border:1px solid var(--border);
+  border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer;transition:all .2s}
+.btn-discard:hover{color:var(--white);border-color:rgba(255,255,255,0.3)}
 .sync-bar{position:fixed;top:0;left:0;right:0;height:3px;z-index:9990;background:linear-gradient(90deg,transparent,var(--accent),transparent);background-size:200% 100%;animation:syncAnim 1.4s ease infinite}
 @keyframes syncAnim{0%{background-position:200% 0}100%{background-position:-200% 0}}
 @media(max-width:900px){.app-layout{padding:16px;gap:14px}.sidebar{width:180px}.doctors-grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}}
@@ -166,6 +181,13 @@ input,select{font-family:inherit}
   <div class="lb-strip" id="lbStrip"></div>
 </div>
 <div class="toast" id="toast"></div>
+<div class="save-bar" id="saveBar">
+  <div class="save-bar-msg">You have <span id="saveCount">0</span> unsaved change(s)</div>
+  <div class="save-bar-actions">
+    <button class="btn-discard" onclick="discardChanges()">Discard</button>
+    <button class="btn-save" id="btnSave" onclick="saveChanges()">💾 Save Changes</button>
+  </div>
+</div>
 <script>
 const SUPA_URL='https://yngfvoijlgxnmgsxgnjv.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InluZ2Z2b2lqbGd4bm1nc3hnbmp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDEzNzIsImV4cCI6MjA5NjA3NzM3Mn0.cPC8hmKvoSO5YdFQ7K5u9VVarJ43brIKZZeCiOLpuEA';
@@ -345,6 +367,8 @@ const SILHOUETTE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'
 // ── STATE
 const galleries={}, docFiles={}, genderOv={}, cardIdx={};
 let activeClinic=null, lbDocId=null, lbIdx=0;
+const pendingAdds=[];    // [{docId,file,path,entry}]
+const pendingDeletes=[]; // [{type:'photo'|'doc',supaPath,dbTable,docId,name}]
 
 // ── SUPABASE STORAGE
 async function supaUpload(path,file){
@@ -444,6 +468,64 @@ async function loadFromDB(){
     }
     for(var k=0;k<genders.length;k++) genderOv[genders[k].doc_id]=genders[k].gender;
   } catch(err){console.warn('DB load failed:',err);}
+}
+
+// ── SAVE / DISCARD
+function updateSaveBar(){
+  var total=pendingAdds.length+pendingDeletes.length;
+  var bar=document.getElementById('saveBar');
+  var cnt=document.getElementById('saveCount');
+  if(bar) bar.classList.toggle('visible', total>0);
+  if(cnt) cnt.textContent=total;
+}
+
+async function saveChanges(){
+  var btn=document.getElementById('btnSave');
+  if(btn){btn.disabled=true;btn.textContent='Saving...';}
+  var ok=0,fail=0;
+  // Process adds
+  for(var i=0;i<pendingAdds.length;i++){
+    var a=pendingAdds[i];
+    try{
+      var url=await supaUpload(a.path,a.file);
+      a.entry.src=url;a.entry.pending=false;
+      await dbUpsert('cd_photos','supa_path',{doc_id:a.docId,name:a.file.name,supa_path:a.path,supa_url:url,is_user:true});
+      ok++;
+    } catch(err){console.error('Save add failed:',err);fail++;}
+  }
+  // Process deletes
+  for(var j=0;j<pendingDeletes.length;j++){
+    var d=pendingDeletes[j];
+    try{
+      await supaDelete(d.supaPath);
+      await dbDelete(d.dbTable,'supa_path',d.supaPath);
+      ok++;
+    } catch(err){console.error('Save delete failed:',err);fail++;}
+  }
+  pendingAdds.length=0;pendingDeletes.length=0;
+  updateSaveBar();
+  renderPanel();
+  if(btn){btn.disabled=false;btn.textContent='\ud83d\udcbe Save Changes';}
+  if(fail>0) showToast('\u26a0\ufe0f '+ok+' saved, '+fail+' failed');
+  else showToast('\u2705 All changes saved!');
+}
+
+function discardChanges(){
+  // Remove pending add previews from galleries
+  pendingAdds.forEach(function(a){
+    var g=galleries[a.docId];
+    if(g){var pi=g.findIndex(function(p){return p.supaPath===a.path;});if(pi!==-1) g.splice(pi,1);}
+  });
+  // Restore pending deletes back into galleries
+  pendingDeletes.forEach(function(d){
+    if(d.type==='photo'&&galleries[d.docId]){
+      galleries[d.docId].push({src:supaSign(d.supaPath),supaPath:d.supaPath,name:d.name,user:true});
+    }
+  });
+  pendingAdds.length=0;pendingDeletes.length=0;
+  updateSaveBar();
+  renderPanel();
+  showToast('\u21a9\ufe0f Changes discarded');
 }
 
 // ── BOOT
@@ -600,21 +682,23 @@ function addMorePhotos(docId){
 async function addPhotos(docId,clinicId,secId,input){
   var files=Array.from(input.files);
   if(!files.length) return;
-  showToast('\u2b06\ufe0f Uploading '+files.length+' photo'+(files.length>1?'s':'')+'\u2026');
-  var ok=0;
   for(var i=0;i<files.length;i++){
     var file=files[i];
     var ext=file.name.split('.').pop()||'jpg';
     var path='photos/'+docId+'/'+Date.now()+'_'+i+'.'+ext;
-    try{
-      var url=await supaUpload(path,file);
-      galleries[docId].push({src:url,supaPath:path,name:file.name,user:true});
-      cardIdx[docId]=galleries[docId].length-1;
-      await dbUpsert('cd_photos','supa_path',{doc_id:docId,name:file.name,supa_path:path,supa_url:url,is_user:true});
-      ok++;
-    } catch(err){showToast('\u26a0\ufe0f Failed: '+err.message);console.error(err);}
+    // Stage locally — show preview immediately via FileReader
+    var localUrl=await new Promise(function(res){
+      var r=new FileReader();r.onload=function(e){res(e.target.result);};r.readAsDataURL(file);
+    });
+    var entry={src:localUrl,supaPath:path,name:file.name,user:true,pending:true};
+    galleries[docId].push(entry);
+    cardIdx[docId]=galleries[docId].length-1;
+    pendingAdds.push({docId:docId,file:file,path:path,entry:entry});
   }
-  if(ok>0){showToast('\u2705 '+ok+' photo'+(ok>1?'s':'')+' saved');refreshCard(docId,clinicId,secId);updateStats();}
+  refreshCard(docId,clinicId,secId);
+  updateStats();
+  updateSaveBar();
+  showToast('\ud83d\udccc '+files.length+' photo'+(files.length>1?'s':'')+' staged — click Save to upload');
 }
 function navCard(docId,dir,clinicId,secId){
   var g=galleries[docId];if(!g||!g.length) return;
@@ -638,17 +722,17 @@ async function downloadAllPhotos(docId,name){
 async function deletePhoto(docId,clinicId,secId){
   var g=galleries[docId];if(!g||!g.length) return;
   var di=cardIdx[docId]||0;var photo=g[di];
-  console.log('DELETE PHOTO:', JSON.stringify({docId:docId,di:di,supaPath:photo&&photo.supaPath,user:photo&&photo.user,name:photo&&photo.name}));
   g.splice(di,1);cardIdx[docId]=Math.max(0,di-1);
-  if(photo&&photo.supaPath&&photo.supaPath.indexOf('photos/')===0){
-    // Uploaded photo — delete from storage AND db
-    await supaDelete(photo.supaPath);
-    await dbDelete('cd_photos','supa_path',photo.supaPath);
-  } else if(photo&&photo.user){
-    // User photo without supaPath — delete from db by doc_id+name
-    await dbDelete('cd_photos','name',photo.name);
+  if(photo&&photo.pending){
+    // Never saved — remove from pendingAdds only
+    var pi=pendingAdds.findIndex(function(p){return p.path===photo.supaPath;});
+    if(pi!==-1) pendingAdds.splice(pi,1);
+  } else if(photo&&photo.supaPath&&photo.supaPath.indexOf('photos/')===0){
+    // Saved photo — stage for deletion on Save
+    pendingDeletes.push({type:'photo',supaPath:photo.supaPath,dbTable:'cd_photos',docId:docId,name:photo.name});
   }
-  showToast('\ud83d\uddd1\ufe0f Photo removed');refreshCard(docId,clinicId,secId);updateStats();
+  showToast('\ud83d\uddd1\ufe0f Removed — click Save to confirm');
+  refreshCard(docId,clinicId,secId);updateStats();updateSaveBar();
 }
 
 // ── DOCS
