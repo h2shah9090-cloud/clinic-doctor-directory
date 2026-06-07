@@ -827,16 +827,23 @@ function setIdx(docId,idx,clinicId,secId){cardIdx[docId]=idx;refreshCard(docId,c
 function downloadPhoto(docId){
   var g=galleries[docId];if(!g||!g.length) return;
   var p=g[cardIdx[docId]||0];
-  // Always download original — never the thumbnail
+  // Resolve original URL — prefer origUrl, fall back to deriving from thumb path
   var url=p.origUrl||p.src;
-  // Build filename from doctor name + index
-  var doc=null;
-  CLINICS.forEach(function(cl){cl.sections.forEach(function(s){s.doctors.forEach(function(d){if(d.id===docId) doc=d;});});});
-  var docName=doc?doc.name.replace(/[^a-zA-Z0-9]/g,'_'):'Doctor';
+  if(p.thumbPath&&!p.origUrl){
+    // Old photo: derive orig path from thumb path (photos/id/thumb/x -> photos/id/orig/x)
+    var origPath=p.thumbPath.replace('/thumb/','/orig/');
+    url=SUPA_URL+'/storage/v1/object/public/'+SUPA_BUCKET+'/'+origPath;
+  }
+  // Doctor name as filename
+  var doc=DOC_LOC[docId]?CLINICS.find(function(cl){return cl.id===DOC_LOC[docId].clinicId;}) : null;
+  var docObj=null;
+  if(doc) doc.sections.forEach(function(s){s.doctors.forEach(function(d){if(d.id===docId) docObj=d;});});
+  var docName=docObj?docObj.name.replace(/[^a-zA-Z0-9]/g,'_'):'Doctor';
   var idx=cardIdx[docId]||0;
   var ext=(p.name&&p.name.split('.').pop())||'jpg';
-  var filename=docName+'_photo_'+(idx+1)+'.'+ext;
-  var a=document.createElement('a');a.href=url;a.download=filename;a.click();
+  var filename=docName+'_'+(idx+1)+'.'+ext;
+  var a=document.createElement('a');a.href=url;a.download=filename;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
 }
 async function downloadAllPhotos(docId,name){
   var g=galleries[docId];if(!g||!g.length) return;
@@ -844,9 +851,13 @@ async function downloadAllPhotos(docId,name){
   var safeName=name.replace(/[^a-zA-Z0-9]/g,'_');
   for(var i=0;i<g.length;i++){
     var p=g[i];
-    var url=p.origUrl||p.src; // always original
+    var url=p.origUrl||p.src;
+    if(p.thumbPath&&!p.origUrl){
+      var origPath=p.thumbPath.replace('/thumb/','/orig/');
+      url=SUPA_URL+'/storage/v1/object/public/'+SUPA_BUCKET+'/'+origPath;
+    }
     var ext=(p.name&&p.name.split('.').pop())||'jpg';
-    var filename=safeName+'_photo_'+(i+1)+'.'+ext;
+    var filename=safeName+'_'+(i+1)+'.'+ext;
     var a=document.createElement('a');a.href=url;a.download=filename;
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     await new Promise(function(r){setTimeout(r,400);});
