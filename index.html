@@ -638,10 +638,15 @@ async function downloadAllPhotos(docId,name){
 async function deletePhoto(docId,clinicId,secId){
   var g=galleries[docId];if(!g||!g.length) return;
   var di=cardIdx[docId]||0;var photo=g[di];
+  console.log('DELETE PHOTO:', JSON.stringify({docId:docId,di:di,supaPath:photo&&photo.supaPath,user:photo&&photo.user,name:photo&&photo.name}));
   g.splice(di,1);cardIdx[docId]=Math.max(0,di-1);
   if(photo&&photo.supaPath&&photo.supaPath.indexOf('photos/')===0){
-    supaDelete(photo.supaPath);
-    dbDelete('cd_photos','supa_path',photo.supaPath);
+    // Uploaded photo — delete from storage AND db
+    await supaDelete(photo.supaPath);
+    await dbDelete('cd_photos','supa_path',photo.supaPath);
+  } else if(photo&&photo.user){
+    // User photo without supaPath — delete from db by doc_id+name
+    await dbDelete('cd_photos','name',photo.name);
   }
   showToast('\ud83d\uddd1\ufe0f Photo removed');refreshCard(docId,clinicId,secId);updateStats();
 }
