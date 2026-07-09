@@ -841,22 +841,19 @@ function fetchAndDownload(url, filename){
 function downloadPhoto(docId){
   var g=galleries[docId];if(!g||!g.length) return;
   var p=g[cardIdx[docId]||0];
-  // Resolve original URL — prefer origUrl, fall back to deriving from thumb path
+  // origUrl = full-res original (new uploads)
+  // src = the stored URL for old uploads (also full-res, no thumb split existed)
   var url=p.origUrl||p.src;
-  if(p.thumbPath&&!p.origUrl){
-    // Old photo: derive orig path from thumb path (photos/id/thumb/x -> photos/id/orig/x)
-    var origPath=p.thumbPath.replace('/thumb/','/orig/');
-    url=SUPA_URL+'/storage/v1/object/public/'+SUPA_BUCKET+'/'+origPath;
-  }
   // Doctor name as filename
-  var doc=DOC_LOC[docId]?CLINICS.find(function(cl){return cl.id===DOC_LOC[docId].clinicId;}) : null;
+  var loc=DOC_LOC[docId]||{};
+  var clinic=CLINICS.find(function(cl){return cl.id===loc.clinicId;});
   var docObj=null;
-  if(doc) doc.sections.forEach(function(s){s.doctors.forEach(function(d){if(d.id===docId) docObj=d;});});
+  if(clinic) clinic.sections.forEach(function(s){s.doctors.forEach(function(d){if(d.id===docId) docObj=d;});});
   var docName=docObj?docObj.name.replace(/[^a-zA-Z0-9]/g,'_'):'Doctor';
   var idx=cardIdx[docId]||0;
   var ext=(p.name&&p.name.split('.').pop())||'jpg';
   var filename=docName+'_'+(idx+1)+'.'+ext;
-  fetchAndDownload(url, filename);
+  fetchAndDownload(url,filename);
 }
 async function downloadAllPhotos(docId,name){
   var g=galleries[docId];if(!g||!g.length) return;
@@ -865,14 +862,10 @@ async function downloadAllPhotos(docId,name){
   for(var i=0;i<g.length;i++){
     var p=g[i];
     var url=p.origUrl||p.src;
-    if(p.thumbPath&&!p.origUrl){
-      var origPath=p.thumbPath.replace('/thumb/','/orig/');
-      url=SUPA_URL+'/storage/v1/object/public/'+SUPA_BUCKET+'/'+origPath;
-    }
     var ext=(p.name&&p.name.split('.').pop())||'jpg';
     var filename=safeName+'_'+(i+1)+'.'+ext;
-    await fetchAndDownload(url, filename);
-    await new Promise(function(r){setTimeout(r,600);});
+    fetchAndDownload(url,filename);
+    await new Promise(function(r){setTimeout(r,800);});
   }
 }
 async function deletePhoto(docId,clinicId,secId){
