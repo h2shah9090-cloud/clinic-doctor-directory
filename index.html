@@ -193,6 +193,11 @@ input,select{font-family:inherit}
 const SUPA_URL='https://yngfvoijlgxnmgsxgnjv.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InluZ2Z2b2lqbGd4bm1nc3hnbmp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDEzNzIsImV4cCI6MjA5NjA3NzM3Mn0.cPC8hmKvoSO5YdFQ7K5u9VVarJ43brIKZZeCiOLpuEA';
 const SUPA_BUCKET='clinic-directory';
+// ── CLOUDINARY CONFIG ─────────────────────────────────────────────────
+const CDN_CLOUD='ddpihsnhu';
+const CDN_PRESET='clinic-directory';
+const CDN_BASE='https://res.cloudinary.com/ddpihsnhu/image/upload';
+const CDN_UPLOAD='https://api.cloudinary.com/v1_1/ddpihsnhu/image/upload';
 
 const CLINICS = [
   // ── STONY PLAIN RD HEALTH CENTRE ─────────────────────────
@@ -372,35 +377,58 @@ const pendingAdds=[];    // [{docId,file,path,entry}]
 const pendingDeletes=[]; // [{type:'photo'|'doc',supaPath,dbTable,docId,name}]
 
 // ── SUPABASE STORAGE
-// ── THUMBNAIL GENERATION ─────────────────────────────────────────────────
-// Generates a compressed thumbnail using canvas — browser-side, no server needed
+// ── CLOUDINARY UPLOAD ────────────────────────────────────────────────────
+// Generates thumbnail client-side for instant preview
 async function generateThumb(file, maxW, maxH, quality){
-  maxW = maxW || 400; maxH = maxH || 480; quality = quality || 0.75;
-  return new Promise(function(resolve, reject){
-    var img = new Image();
-    var blobUrl = URL.createObjectURL(file);
-    img.onload = function(){
-      var sw = img.naturalWidth, sh = img.naturalHeight;
-      // Maintain aspect ratio within maxW x maxH
-      var ratio = Math.min(maxW/sw, maxH/sh, 1); // never upscale
-      var tw = Math.round(sw * ratio);
-      var th = Math.round(sh * ratio);
-      var canvas = document.createElement('canvas');
-      canvas.width = tw; canvas.height = th;
-      var ctx = canvas.getContext('2d');
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(img, 0, 0, tw, th);
+  maxW=maxW||400; maxH=maxH||480; quality=quality||0.75;
+  return new Promise(function(resolve,reject){
+    var img=new Image();
+    var blobUrl=URL.createObjectURL(file);
+    img.onload=function(){
+      var sw=img.naturalWidth, sh=img.naturalHeight;
+      var ratio=Math.min(maxW/sw, maxH/sh, 1);
+      var tw=Math.round(sw*ratio), th=Math.round(sh*ratio);
+      var canvas=document.createElement('canvas');
+      canvas.width=tw; canvas.height=th;
+      var ctx=canvas.getContext('2d');
+      ctx.imageSmoothingEnabled=true;
+      ctx.imageSmoothingQuality='high';
+      ctx.drawImage(img,0,0,tw,th);
       URL.revokeObjectURL(blobUrl);
       canvas.toBlob(function(blob){
-        if(!blob) reject(new Error('Canvas toBlob failed'));
+        if(!blob) reject(new Error('toBlob failed'));
         else resolve(blob);
-      }, 'image/jpeg', quality);
+      },'image/jpeg',quality);
     };
-    img.onerror = function(){ URL.revokeObjectURL(blobUrl); reject(new Error('Image load failed')); };
-    img.src = blobUrl;
+    img.onerror=function(){URL.revokeObjectURL(blobUrl);reject(new Error('load failed'));};
+    img.src=blobUrl;
   });
 }
+
+// Upload to Cloudinary — returns {origUrl, thumbUrl, publicId}
+async function cloudinaryUpload(file, folder){
+  var fd=new FormData();
+  fd.append('file', file);
+  fd.append('upload_preset', CDN_PRESET);
+  fd.append('folder', folder);
+  // Use original filename as public_id base
+  var safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_').replace(/\.[^.]+$/,'');
+  fd.append('public_id', safeName+'_'+Date.now());
+  var res=await fetch(CDN_UPLOAD, {method:'POST', body:fd});
+  if(!res.ok){
+    var err=await res.text();
+    throw new Error('Cloudinary upload failed: '+err);
+  }
+  var data=await res.json();
+  // Original URL — full resolution, original format
+  var origUrl=data.secure_url;
+  // Thumb URL — Cloudinary transforms on-the-fly via URL params
+  var thumbUrl=CDN_BASE+'/w_400,h_480,c_fill,q_75,f_auto/'+data.public_id;
+  // Download URL — forces download with original filename
+  var dlUrl=CDN_BASE+'/fl_attachment:'+encodeURIComponent(file.name)+'/'+data.public_id;
+  return {origUrl:origUrl, thumbUrl:thumbUrl, dlUrl:dlUrl, publicId:data.public_id};
+}
+
 
 async function supaUpload(path,file){
   const res=await fetch(SUPA_URL+'/storage/v1/object/'+SUPA_BUCKET+'/'+path,{
@@ -503,10 +531,11 @@ async function loadFromDB(){
       if(!galleries[r.doc_id]) continue;
       var exists=galleries[r.doc_id].some(function(p){return p.supaPath===r.supa_path;});
       if(!exists){
-        // Use stored URLs directly — bucket is public, no signing needed
-        var displayUrl=r.thumb_url||r.supa_url||supaSign(r.supa_path);
-        var origUrl=r.supa_url||supaSign(r.supa_path);
-        galleries[r.doc_id].push({src:displayUrl,origUrl:origUrl,origPath:r.supa_path,thumbPath:r.thumb_path,name:r.name,user:true});
+        var displayUrl=r.thumb_url||r.supa_url||'';
+        var origUrl=r.supa_url||'';
+        // Build download URL from public_id if available
+        var dlUrl=r.thumb_path?CDN_BASE+'/fl_attachment/'+r.thumb_path:origUrl;
+        galleries[r.doc_id].push({src:displayUrl,origUrl:origUrl,dlUrl:dlUrl,publicId:r.thumb_path,name:r.name,user:true});
       }
     }
     for(var j=0;j<docs.length;j++){
@@ -536,29 +565,23 @@ async function saveChanges(){
   for(var i=0;i<pendingAdds.length;i++){
     var a=pendingAdds[i];
     try{
-      // Upload original at full quality
-      var origUrl=await supaUpload(a.origPath,a.file);
-      // Upload thumbnail (compressed version for display)
-      var thumbUrl=origUrl; // fallback to orig if thumb fails
-      if(a.thumbBlob){
-        try{ thumbUrl=await supaUpload(a.thumbPath,a.thumbBlob); } catch(e){ console.warn('Thumb upload failed:',e); }
-      }
-      // Update entry — thumb for display, orig for download
-      a.entry.src=thumbUrl;        // display uses thumb
-      a.entry.origUrl=origUrl;     // download uses orig
-      a.entry.supa_url=origUrl;    // store for loadFromDB
-      a.entry.thumb_url=thumbUrl;
-      a.entry.origPath=a.origPath;
-      a.entry.thumbPath=a.thumbPath;
+      // Upload to Cloudinary — returns origUrl, thumbUrl, dlUrl
+      var cdnResult=await cloudinaryUpload(a.file, 'clinic-directory/'+a.docId);
+      // Update gallery entry
+      a.entry.src=cdnResult.thumbUrl;     // display: optimised thumbnail via CDN transform
+      a.entry.origUrl=cdnResult.origUrl;  // full-res original
+      a.entry.dlUrl=cdnResult.dlUrl;      // download URL with filename
+      a.entry.publicId=cdnResult.publicId;
       a.entry.pending=false;
       if(a.previewUrl) URL.revokeObjectURL(a.previewUrl);
+      // Save metadata to Supabase DB (just metadata, not the file)
       await dbUpsert('cd_photos','supa_path',{
         doc_id:a.docId,
         name:a.file.name,
-        supa_path:a.origPath,
-        supa_url:origUrl,
-        thumb_path:a.thumbPath,
-        thumb_url:thumbUrl,
+        supa_path:cdnResult.publicId,   // use publicId as unique key
+        supa_url:cdnResult.origUrl,
+        thumb_path:cdnResult.publicId,
+        thumb_url:cdnResult.thumbUrl,
         is_user:true
       });
       ok++;
@@ -826,25 +849,28 @@ function navCard(docId,dir,clinicId,secId){
 function setIdx(docId,idx,clinicId,secId){cardIdx[docId]=idx;refreshCard(docId,clinicId,secId);}
 // Fetch image as blob then download — bypasses cross-origin <a download> restriction
 function fetchAndDownload(url, filename){
-  // Append Supabase download param — server sets Content-Disposition: attachment
-  // This is a direct navigation, not XHR — no CORS issues
-  var sep = url.indexOf('?') === -1 ? '?' : '&';
-  var dlUrl = url + sep + 'download=' + encodeURIComponent(filename);
-  showToast('\u2b07\ufe0f Saving ' + filename + '...');
-  // Create invisible iframe to trigger download without leaving the page
-  var iframe = document.createElement('iframe');
-  iframe.style.display = 'none';
-  iframe.src = dlUrl;
-  document.body.appendChild(iframe);
-  setTimeout(function(){ document.body.removeChild(iframe); }, 5000);
+  // Cloudinary fl_attachment param forces Content-Disposition: attachment
+  // Insert it into the URL if not already present
+  var dlUrl=url;
+  if(url.indexOf('cloudinary.com')!==-1 && url.indexOf('fl_attachment')===-1){
+    dlUrl=url.replace('/image/upload/','/image/upload/fl_attachment:'+encodeURIComponent(filename)+'/');
+  }
+  showToast('\u2b07\ufe0f Downloading '+filename+'...');
+  var a=document.createElement('a');
+  a.href=dlUrl;
+  a.download=filename;
+  a.target='_blank';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 function downloadPhoto(docId){
   var g=galleries[docId];if(!g||!g.length) return;
   var p=g[cardIdx[docId]||0];
-  // origUrl = full-res original (new uploads)
-  // src = the stored URL for old uploads (also full-res, no thumb split existed)
-  var url=p.origUrl||p.src;
+  // dlUrl = Cloudinary URL with Content-Disposition: attachment (forces download)
+  // origUrl = direct full-res URL fallback
+  var url=p.dlUrl||p.origUrl||p.src;
   // Doctor name as filename
   var loc=DOC_LOC[docId]||{};
   var clinic=CLINICS.find(function(cl){return cl.id===loc.clinicId;});
