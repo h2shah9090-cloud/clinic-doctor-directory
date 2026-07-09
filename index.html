@@ -826,16 +826,33 @@ function navCard(docId,dir,clinicId,secId){
 function setIdx(docId,idx,clinicId,secId){cardIdx[docId]=idx;refreshCard(docId,clinicId,secId);}
 // Fetch image as blob then download — bypasses cross-origin <a download> restriction
 function fetchAndDownload(url, filename){
-  // Supabase public bucket supports ?download= param to force browser download
-  var dlUrl = url + (url.indexOf('?') === -1 ? '?' : '&') + 'download=' + encodeURIComponent(filename);
-  var a = document.createElement('a');
-  a.href = dlUrl;
-  a.download = filename;
-  a.target = '_self';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  showToast('\u2705 Downloading: ' + filename);
+  showToast('\u2b07\ufe0f Downloading...');
+  // Use XMLHttpRequest — better CORS handling than fetch for binary files
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', url, true);
+  xhr.responseType = 'blob';
+  xhr.onload = function(){
+    if(xhr.status === 200){
+      var blob = xhr.response;
+      var blobUrl = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 3000);
+      showToast('\u2705 Downloaded: ' + filename);
+    } else {
+      showToast('\u26a0\ufe0f Error ' + xhr.status + ' — check console');
+      console.error('XHR download failed:', xhr.status, url);
+    }
+  };
+  xhr.onerror = function(){
+    console.error('XHR network error for URL:', url);
+    showToast('\u26a0\ufe0f Network error — see console');
+  };
+  xhr.send();
 }
 
 function downloadPhoto(docId){
