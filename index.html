@@ -825,26 +825,17 @@ function navCard(docId,dir,clinicId,secId){
 }
 function setIdx(docId,idx,clinicId,secId){cardIdx[docId]=idx;refreshCard(docId,clinicId,secId);}
 // Fetch image as blob then download — bypasses cross-origin <a download> restriction
-async function fetchAndDownload(url, filename){
-  showToast('\u2b07\ufe0f Downloading...');
-  try {
-    var res = await fetch(url, {mode:'cors', cache:'no-store'});
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    var blob = await res.blob();
-    var blobUrl = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 2000);
-    showToast('\u2705 Downloaded: '+filename);
-  } catch(e){
-    console.error('Download error:', e.message, 'URL:', url);
-    showToast('\u26a0\ufe0f Download failed — opening in new tab');
-    window.open(url, '_blank');
-  }
+function fetchAndDownload(url, filename){
+  // Supabase public bucket supports ?download= param to force browser download
+  var dlUrl = url + (url.indexOf('?') === -1 ? '?' : '&') + 'download=' + encodeURIComponent(filename);
+  var a = document.createElement('a');
+  a.href = dlUrl;
+  a.download = filename;
+  a.target = '_self';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  showToast('\u2705 Downloading: ' + filename);
 }
 
 function downloadPhoto(docId){
