@@ -826,33 +826,17 @@ function navCard(docId,dir,clinicId,secId){
 function setIdx(docId,idx,clinicId,secId){cardIdx[docId]=idx;refreshCard(docId,clinicId,secId);}
 // Fetch image as blob then download — bypasses cross-origin <a download> restriction
 function fetchAndDownload(url, filename){
-  showToast('\u2b07\ufe0f Downloading...');
-  // Use XMLHttpRequest — better CORS handling than fetch for binary files
-  var xhr = new XMLHttpRequest();
-  xhr.open('GET', url, true);
-  xhr.responseType = 'blob';
-  xhr.onload = function(){
-    if(xhr.status === 200){
-      var blob = xhr.response;
-      var blobUrl = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 3000);
-      showToast('\u2705 Downloaded: ' + filename);
-    } else {
-      showToast('\u26a0\ufe0f Error ' + xhr.status + ' — check console');
-      console.error('XHR download failed:', xhr.status, url);
-    }
-  };
-  xhr.onerror = function(){
-    console.error('XHR network error for URL:', url);
-    showToast('\u26a0\ufe0f Network error — see console');
-  };
-  xhr.send();
+  // Append Supabase download param — server sets Content-Disposition: attachment
+  // This is a direct navigation, not XHR — no CORS issues
+  var sep = url.indexOf('?') === -1 ? '?' : '&';
+  var dlUrl = url + sep + 'download=' + encodeURIComponent(filename);
+  showToast('\u2b07\ufe0f Saving ' + filename + '...');
+  // Create invisible iframe to trigger download without leaving the page
+  var iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  iframe.src = dlUrl;
+  document.body.appendChild(iframe);
+  setTimeout(function(){ document.body.removeChild(iframe); }, 5000);
 }
 
 function downloadPhoto(docId){
