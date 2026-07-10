@@ -145,6 +145,22 @@ input,select{font-family:inherit}
   border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer;transition:all .2s}
 .btn-discard:hover{color:var(--white);border-color:rgba(255,255,255,0.3)}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.clinic-assets{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
+.asset-block{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.asset-block-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.asset-block-title{font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent)}
+.asset-block-title.images{color:var(--gold)}
+.asset-block-count{font-size:11px;color:var(--muted);background:var(--navy3);padding:2px 8px;border-radius:8px}
+.asset-grid{display:flex;flex-wrap:wrap;gap:8px;padding:12px;min-height:80px}
+.asset-thumb{position:relative;width:72px;height:72px;border-radius:8px;overflow:hidden;border:1px solid var(--border);flex-shrink:0}
+.asset-thumb img{width:100%;height:100%;object-fit:cover;object-position:center}
+.asset-thumb-del{position:absolute;top:2px;right:2px;background:rgba(231,76,60,0.85);border:none;color:#fff;width:18px;height:18px;border-radius:50%;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+.asset-thumb-dl{position:absolute;bottom:2px;right:2px;background:rgba(0,0,0,0.7);border:none;color:#fff;width:18px;height:18px;border-radius:50%;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.asset-empty{width:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;min-height:60px}
+.asset-upload-btn{margin:0 12px 12px;position:relative;overflow:hidden;border:1px dashed var(--border);background:transparent;color:var(--muted);border-radius:8px;padding:8px;width:calc(100% - 24px);display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;font-size:12px;transition:all .2s}
+.asset-upload-btn:hover{border-color:var(--accent);color:var(--accent)}
+.asset-upload-btn input{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:0}
+@media(max-width:700px){.clinic-assets{grid-template-columns:1fr}}
 .sync-bar{position:fixed;top:0;left:0;right:0;height:3px;z-index:9990;background:linear-gradient(90deg,transparent,var(--accent),transparent);background-size:200% 100%;animation:syncAnim 1.4s ease infinite}
 @keyframes syncAnim{0%{background-position:200% 0}100%{background-position:-200% 0}}
 @media(max-width:900px){.app-layout{padding:16px;gap:14px}.sidebar{width:180px}.doctors-grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}}
@@ -309,12 +325,10 @@ input,select{font-family:inherit}
     ]},
 
   // ── GURU NANAK CHILD CARE ────────────────────────────────
-  {id:"gndc",name:"Guru Nanak Child Care",icon:"🏫",location:"Surrey, BC / Edmonton, AB",
-    sections:[
-      {sectionId:"fam",sectionLabel:"Staff",sectionType:"family",doctors:[
-        {id:"gndc_staff",name:"Management Team",specialty:"Childcare Facility",type:"family",gender:"",awaitingPhoto:true},
-      ]}
-    ]},
+  {id:"walkin",name:"WalkIn Medical Clinic",icon:"🏥",location:"Edmonton, AB",
+    sections:[]},
+  {id:"mistatim",name:"Mistatim Health Center",icon:"🏥",location:"Edmonton, AB",
+    sections:[]},
 ];
 
 const SEEDS = {
@@ -396,6 +410,17 @@ function cdnDlUrl(publicId, filename) {
 // Format: cdnPhotos[docId] = [{publicId, name, origUrl, thumbUrl, dlUrl}]
 function dbLoad() {
   try { return JSON.parse(localStorage.getItem('cdnPhotos') || '{}'); } catch(e) { return {}; }
+}
+// Clinic assets (logo + images)
+function clinicAssetsGet(clinicId) {
+  try { return JSON.parse(localStorage.getItem('cdnClinicAssets') || '{}')[clinicId] || {logo:[], images:[]}; } catch(e) { return {logo:[], images:[]}; }
+}
+function clinicAssetsSet(clinicId, assets) {
+  try {
+    var all = JSON.parse(localStorage.getItem('cdnClinicAssets') || '{}');
+    all[clinicId] = assets;
+    localStorage.setItem('cdnClinicAssets', JSON.stringify(all));
+  } catch(e) {}
 }
 function dbSave(data) {
   try { localStorage.setItem('cdnPhotos', JSON.stringify(data)); } catch(e) { console.warn('db save failed', e); }
@@ -547,483 +572,112 @@ function setActiveClinic(id) { activeClinic = id; renderSidebar(); renderPanel()
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // ── RENDER PANEL ──────────────────────────────────────────────────────────
-function renderPanel() {
-  var wrap = document.getElementById('panelWrap');
-  if (!wrap || !activeClinic) return;
-  var clinic = CLINICS.find(function(c){ return c.id === activeClinic; });
-  if (!clinic) return;
-  var td = clinic.sections.reduce(function(n,s){ return n+s.doctors.length; }, 0);
-  var wp = clinic.sections.reduce(function(n,s){
-    return n + s.doctors.filter(function(d){ return galleries[d.id] && galleries[d.id].length > 0; }).length;
-  }, 0);
-  var secs = '';
-  clinic.sections.forEach(function(sec) {
-    var cards = sec.doctors.map(function(doc){ return cardHTML(doc, clinic.id, sec.sectionId); }).join('');
-    secs += '<div class="section-header"><span class="section-title '+sec.sectionType+'">'+sec.sectionLabel+'</span>' +
-      '<span class="section-line"></span><span class="section-count">'+sec.doctors.length+' doctor'+(sec.doctors.length!==1?'s':'')+'</span></div>' +
-      '<div class="doctors-grid" id="grid_'+clinic.id+'_'+sec.sectionId+'">'+cards+'</div>';
-  });
-  wrap.innerHTML = '<div class="panel-header"><div>' +
-    '<div class="panel-title">'+clinic.icon+' '+clinic.name+'</div>' +
-    '<div class="panel-meta">&#128205; '+clinic.location+' &nbsp;&middot;&nbsp; <span>'+td+'</span> doctors &nbsp;&middot;&nbsp; <span>'+wp+'</span> with photos</div>' +
-    '</div><div class="panel-actions">' +
-    '<input class="panel-search" type="text" placeholder="Search doctor&hellip;" oninput="filterCards(this.value)" maxlength="60" autocomplete="off" spellcheck="false">' +
-    '<button class="btn-dl-all" onclick="downloadClinic(\''+clinic.id+'\')">&#8659; Download All</button>' +
-    '</div></div>' + secs;
-}
+// ── CLINIC ASSETS ────────────────────────────────────────────────────────────
+function renderClinicAssets(clinicId){
+  var assets=clinicAssetsGet(clinicId);
+  var logo=assets.logo||[];
+  var imgs=assets.images||[];
 
-// ── CARD HTML ─────────────────────────────────────────────────────────────
-function cardHTML(doc, clinicId, secId) {
-  var g = galleries[doc.id] || [];
-  var cnt = g.length;
-  var idx = cnt > 0 ? Math.min(cardIdx[doc.id]||0, cnt-1) : 0;
-  var effG = genderOv[doc.id] !== undefined ? genderOv[doc.id] : (doc.gender||'');
-
-  var gallHtml = '';
-  if (doc.silhouette) {
-    gallHtml = '<div class="gallery-wrap" style="cursor:default"><div class="silhouette-wrap"><img class="silhouette-img" src="'+SILHOUETTE+'" alt=""></div>' +
-      '<div class="privacy-badge">&#128285; Photo not displayed by request</div></div>' +
-      '<div class="thumb-strip" style="justify-content:center;font-size:11px;color:var(--muted)">Privacy preference</div>';
-  } else if (cnt > 0) {
-    var thumbs = g.map(function(p,i){
-      return '<img class="thumb'+(i===idx?' active':'')+'" src="'+p.src+'" alt="" loading="lazy" onclick="setIdx(\''+doc.id+'\','+i+',\''+clinicId+'\',\''+secId+'\')">';
-    }).join('');
-    var navP = cnt>1 ? '<button class="gallery-nav prev" onclick="navCard(\''+doc.id+'\',-1,\''+clinicId+'\',\''+secId+'\')">&#8249;</button>' : '';
-    var navN = cnt>1 ? '<button class="gallery-nav next" onclick="navCard(\''+doc.id+'\',1,\''+clinicId+'\',\''+secId+'\')">&#8250;</button>' : '';
-    gallHtml = '<div class="gallery-wrap" ondblclick="openLb(\''+doc.id+'\','+idx+')">' +
-      '<img class="gallery-img" src="'+g[idx].src+'" alt="'+esc(doc.name)+'" loading="lazy">' +
-      '<span class="gallery-counter">'+(idx+1)+'/'+cnt+'</span>'+navP+navN+'</div>' +
-      '<div class="thumb-strip">'+thumbs+
-      '<label class="thumb-add" title="Add photos"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
-      '<input type="file" accept="image/*" multiple onchange="addPhotos(\''+doc.id+'\',\''+clinicId+'\',\''+secId+'\',this)"></label></div>';
-  } else {
-    gallHtml = '<div class="gallery-wrap"><div class="gallery-empty"><svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span>No photo yet</span></div></div>' +
-      '<div class="thumb-strip"><label class="thumb-add" style="width:100%;border-radius:4px">' +
-      '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Upload Photos' +
-      '<input type="file" accept="image/*" multiple onchange="addPhotos(\''+doc.id+'\',\''+clinicId+'\',\''+secId+'\',this)"></label></div>';
+  function makeThumb(item,type,i){
+    var isImg=item.type&&item.type.indexOf('image')!==-1;
+    var preview=isImg
+      ?'<img src="'+item.thumbUrl+'" loading="lazy" alt="" style="width:100%;height:100%;object-fit:cover">'
+      :'<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:22px">&#128196;</div>';
+    return '<div class="asset-thumb">'+preview+
+      '<button class="asset-thumb-del" onclick="deleteClinicAsset(this)" data-clinic="'+clinicId+'" data-type="'+type+'" data-idx="'+i+'" title="Remove">&#10005;</button>'+
+      '<button class="asset-thumb-dl" onclick="downloadClinicAsset(this)" data-clinic="'+clinicId+'" data-type="'+type+'" data-idx="'+i+'" title="Download">&#8659;</button>'+
+      '</div>';
   }
 
-  var myDocs = docFiles[doc.id] || [];
-  var docsHtml = myDocs.map(function(d,i){
-    var ic = d.type&&d.type.indexOf('pdf')!==-1?'&#128196;':d.type&&d.type.indexOf('doc')!==-1?'&#128221;':'&#128204;';
-    return '<li class="doc-item"><span>'+ic+'</span><span class="doc-name" title="'+esc(d.name)+'">'+esc(d.name)+'</span>' +
-      '<button class="doc-dl" onclick="downloadDoc(\''+doc.id+'\','+i+')">&#8595;</button>' +
-      '<button class="doc-del" onclick="deleteDoc(\''+doc.id+'\','+i+',\''+clinicId+'\',\''+secId+'\')">&#10005;</button></li>';
-  }).join('');
-
-  var photoActs = '';
-  if (!doc.silhouette && cnt > 0) {
-    photoActs = '<button class="btn primary" onclick="addMorePhotos(\''+doc.id+'\')">&#8679; Add More</button>' +
-      '<button class="btn" onclick="downloadPhoto(\''+doc.id+'\')">&#8659; Download</button>';
-    if (cnt > 1) photoActs += '<button class="btn" onclick="downloadAllPhotos(\''+doc.id+'\',\''+esc(doc.name)+'\')">&#8659; All ('+cnt+')</button>';
-    photoActs += '<button class="btn danger" onclick="deletePhoto(\''+doc.id+'\',\''+clinicId+'\',\''+secId+'\')">&#128465; Remove</button>';
-  } else if (!doc.silhouette) {
-    photoActs = '<button class="btn primary" onclick="addMorePhotos(\''+doc.id+'\')">&#8679; Upload</button>';
+  function gridHtml(items,type){
+    if(!items.length) return '<div class="asset-empty">No files yet</div>';
+    return items.map(function(item,i){return makeThumb(item,type,i);}).join('');
   }
 
-  return '<div class="doctor-card" id="card_'+doc.id+'" data-name="'+esc(doc.name.toLowerCase())+'"' +
-    ' ondragover="dragOver(event,\''+doc.id+'\')" ondragleave="dragLeave(event,\''+doc.id+'\')" ondrop="onDrop(event,\''+doc.id+'\',\''+clinicId+'\',\''+secId+'\')">' +
-    '<div class="drop-zone"><div class="drop-zone-icon">&#11015;&#65039;</div><div class="drop-zone-label">Drop here</div></div>' +
-    gallHtml +
-    '<div class="card-body"><div class="card-meta">' +
-    '<span class="gender-dot '+effG+'"></span>' +
-    '<span class="doctor-name">'+esc(doc.name)+'</span>' +
-    '<select class="gender-select '+effG+'" onchange="setGender(\''+doc.id+'\',this)">' +
-    '<option value=""'+(effG===''?' selected':'')+'>&#8212; Gender</option>' +
-    '<option value="male"'+(effG==='male'?' selected':'')+'>&#9794; Male</option>' +
-    '<option value="female"'+(effG==='female'?' selected':'')+'>&#9792; Female</option>' +
-    '</select></div>' +
-    '<span class="specialty-tag '+doc.type+'">'+esc(doc.specialty)+'</span>' +
-    '</div><div class="card-actions">'+photoActs+'</div>' +
-    (myDocs.length ? '<ul class="docs-list">'+docsHtml+'</ul>' : '') +
-    '<label class="btn-upload-doc">' +
-    '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg> Upload Document' +
-    '<input type="file" accept=".pdf,.doc,.docx,.txt,.ppt,.pptx,.xls,.xlsx,.csv" multiple onchange="addDocs(\''+doc.id+'\',\''+clinicId+'\',\''+secId+'\',this)"></label>' +
+  var logoBlock=
+    '<div class="asset-block">'+
+      '<div class="asset-block-header">'+
+        '<span class="asset-block-title">&#127981; Clinic Logo</span>'+
+        '<span class="asset-block-count">'+logo.length+' file'+(logo.length!==1?'s':'')+'</span>'+
+      '</div>'+
+      '<div class="asset-grid">'+gridHtml(logo,'logo')+'</div>'+
+      '<label class="asset-upload-btn">'+
+        '<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Upload Logo'+
+        '<input type="file" accept=".jpg,.jpeg,.png,.psd,.cdr,.ai,.svg,.eps,.pdf" multiple data-clinic="'+clinicId+'" data-type="logo" onchange="handleAssetUpload(this)">'+
+      '</label>'+
     '</div>';
+
+  var imgBlock=
+    '<div class="asset-block">'+
+      '<div class="asset-block-header">'+
+        '<span class="asset-block-title images">&#128247; Clinic Images</span>'+
+        '<span class="asset-block-count">'+imgs.length+' file'+(imgs.length!==1?'s':'')+'</span>'+
+      '</div>'+
+      '<div class="asset-grid">'+gridHtml(imgs,'images')+'</div>'+
+      '<label class="asset-upload-btn">'+
+        '<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Upload Clinic Images'+
+        '<input type="file" accept="image/*,.psd,.cdr,.ai,.svg,.eps" multiple data-clinic="'+clinicId+'" data-type="images" onchange="handleAssetUpload(this)">'+
+      '</label>'+
+    '</div>';
+
+  return '<div class="clinic-assets">'+logoBlock+imgBlock+'</div>';
 }
 
-// ── REFRESH CARD ──────────────────────────────────────────────────────────
-function refreshCard(docId, clinicId, secId) {
-  var card = document.getElementById('card_'+docId);
-  if (!card) return;
-  var clinic = CLINICS.find(function(c){ return c.id === clinicId; });
-  if (!clinic) return;
-  var sec = clinic.sections.find(function(s){ return s.sectionId === secId; });
-  if (!sec) return;
-  var doc = sec.doctors.find(function(d){ return d.id === docId; });
-  if (!doc) return;
-  var tmp = document.createElement('div');
-  tmp.innerHTML = cardHTML(doc, clinicId, secId);
-  var nc = tmp.querySelector('.doctor-card');
-  if (nc) card.replaceWith(nc);
+// Use data attributes to avoid inline quote escaping issues
+async function handleAssetUpload(input){
+  var clinicId=input.dataset.clinic;
+  var type=input.dataset.type;
+  await uploadClinicAsset(clinicId,type,input);
 }
 
-// ── ADD PHOTOS ────────────────────────────────────────────────────────────
-function addMorePhotos(docId) {
-  var input = document.createElement('input');
-  input.type = 'file'; input.accept = 'image/*'; input.multiple = true;
-  input.onchange = function() {
-    var loc = DOC_LOC[docId]||{};
-    addPhotos(docId, loc.clinicId, loc.secId, input);
-  };
-  input.click();
-}
-
-async function addPhotos(docId, clinicId, secId, input) {
-  var files = input.files ? Array.from(input.files) : (Array.isArray(input) ? input : []);
-  if (!files.length) return;
-  for (var i = 0; i < files.length; i++) {
-    var file = files[i];
-    var previewUrl = URL.createObjectURL(file);
-    var entry = { src: previewUrl, name: file.name, user: true, pending: true };
-    galleries[docId].push(entry);
-    cardIdx[docId] = galleries[docId].length - 1;
-    pendingAdds.push({ docId: docId, file: file, entry: entry, previewUrl: previewUrl });
-  }
-  refreshCard(docId, clinicId, secId);
-  updateStats();
-  updateSaveBar();
-  showToast('\uD83D\uDCCC '+files.length+' photo'+(files.length>1?'s':'')+' staged \u2014 click Save');
-}
-
-// ── SAVE / DISCARD ────────────────────────────────────────────────────────
-function updateSaveBar() {
-  var total = pendingAdds.length + pendingDeletes.length;
-  var bar = document.getElementById('saveBar');
-  var cnt = document.getElementById('saveCount');
-  if (bar) bar.classList.toggle('visible', total > 0);
-  if (cnt) cnt.textContent = total;
-}
-
-async function saveChanges() {
-  var btn = document.getElementById('btnSave');
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
-  var ok = 0, fail = 0;
-
-  // Upload new photos to Cloudinary
-  for (var i = 0; i < pendingAdds.length; i++) {
-    var a = pendingAdds[i];
-    try {
-      showToast('\u2B06\uFE0F Uploading '+(i+1)+'/'+pendingAdds.length+'...');
-      var result = await cdnUpload(a.file, 'clinic-directory/'+a.docId);
-      // Update entry with Cloudinary URLs
-      a.entry.src      = result.thumbUrl;
-      a.entry.origUrl  = result.origUrl;
-      a.entry.dlUrl    = result.dlUrl;
-      a.entry.publicId = result.publicId;
-      a.entry.pending  = false;
-      if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
-      // Save to localStorage
-      dbAddPhoto(a.docId, { publicId: result.publicId, name: a.file.name, origUrl: result.origUrl, thumbUrl: result.thumbUrl, dlUrl: result.dlUrl });
+async function uploadClinicAsset(clinicId,type,input){
+  var files=Array.from(input.files);
+  if(!files.length) return;
+  var assets=clinicAssetsGet(clinicId);
+  var ok=0;
+  for(var i=0;i<files.length;i++){
+    var file=files[i];
+    try{
+      showToast('\u2B06\uFE0F Uploading '+file.name+'...');
+      var isImg=file.type.indexOf('image')!==-1;
+      var url=isImg?'https://api.cloudinary.com/v1_1/'+CDN_CLOUD+'/image/upload':'https://api.cloudinary.com/v1_1/'+CDN_CLOUD+'/raw/upload';
+      var fd=new FormData();
+      fd.append('file',file);
+      fd.append('upload_preset',CDN_PRESET);
+      fd.append('folder','clinic-directory/'+clinicId+'/'+type);
+      var res=await fetch(url,{method:'POST',body:fd});
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      var d=await res.json();
+      var thumbUrl=isImg?CDN_BASE+'/w_150,h_150,c_fill,q_75/'+d.public_id:'';
+      assets[type].push({name:file.name,type:file.type,publicId:d.public_id,origUrl:d.secure_url,thumbUrl:thumbUrl});
       ok++;
-    } catch(err) {
-      console.error('Upload failed:', err);
-      showToast('\u26A0\uFE0F Failed: '+err.message);
-      fail++;
-    }
+    } catch(err){console.error('Asset upload failed:',err);showToast('\u26A0\uFE0F Failed: '+err.message);}
   }
-
-  // Process deletes
-  for (var j = 0; j < pendingDeletes.length; j++) {
-    var d = pendingDeletes[j];
-    if (d.type === 'seed') {
-      dbAddRemovedSeed(d.docId);
-    } else if (d.type === 'photo' && d.publicId) {
-      dbRemovePhoto(d.docId, d.publicId);
-      // Note: Cloudinary deletion requires server-side signature
-      // Files will be orphaned in Cloudinary but removed from display
-    }
-    ok++;
+  if(ok>0){
+    clinicAssetsSet(clinicId,assets);
+    showToast('\u2705 '+ok+' file'+(ok>1?'s':'')+' uploaded');
+    renderPanel();
   }
+}
 
-  pendingAdds.length = 0;
-  pendingDeletes.length = 0;
-  updateSaveBar();
+function deleteClinicAsset(btn){
+  var clinicId=btn.dataset.clinic;
+  var type=btn.dataset.type;
+  var idx=parseInt(btn.dataset.idx);
+  var assets=clinicAssetsGet(clinicId);
+  assets[type].splice(idx,1);
+  clinicAssetsSet(clinicId,assets);
   renderPanel();
-  if (btn) { btn.disabled = false; btn.textContent = '\uD83D\uDCBE Save Changes'; }
-  if (fail > 0) showToast('\u26A0\uFE0F '+ok+' saved, '+fail+' failed');
-  else showToast('\u2705 All changes saved!');
+  showToast('\uD83D\uDDD1\uFE0F Removed');
 }
 
-function discardChanges() {
-  pendingAdds.forEach(function(a) {
-    if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
-    var g = galleries[a.docId];
-    if (g) { var pi = g.findIndex(function(p){ return p.pending; }); if (pi !== -1) g.splice(pi, 1); }
-  });
-  pendingDeletes.forEach(function(d) {
-    if (d.type === 'seed') {
-      // Re-add seed to gallery
-      var doc = null;
-      CLINICS.forEach(function(cl){ cl.sections.forEach(function(s){ s.doctors.forEach(function(dr){ if(dr.id===d.docId) doc=dr; }); }); });
-      if (doc && galleries[d.docId]) {
-        var src = SEED_PHOTOS[d.docId] ? SEED_PHOTOS[d.docId][0] : (doc.seed && SEEDS[doc.seed] ? SEEDS[doc.seed] : null);
-        if (src) galleries[d.docId].unshift({ src: src, name: doc.name+'_1.jpg', user: false, isSeed: true });
-      }
-    }
-  });
-  pendingAdds.length = 0;
-  pendingDeletes.length = 0;
-  updateSaveBar();
-  renderPanel();
-  showToast('\u21A9\uFE0F Changes discarded');
+function downloadClinicAsset(btn){
+  var clinicId=btn.dataset.clinic;
+  var type=btn.dataset.type;
+  var idx=parseInt(btn.dataset.idx);
+  var assets=clinicAssetsGet(clinicId);
+  var item=(assets[type]||[])[idx];
+  if(!item) return;
+  triggerDownload(item.origUrl,item.name);
 }
-
-// ── PHOTO NAV ─────────────────────────────────────────────────────────────
-function navCard(docId, dir, clinicId, secId) {
-  var g = galleries[docId]; if (!g||!g.length) return;
-  cardIdx[docId] = ((cardIdx[docId]||0) + dir + g.length) % g.length;
-  refreshCard(docId, clinicId, secId);
-}
-function setIdx(docId, idx, clinicId, secId) { cardIdx[docId] = idx; refreshCard(docId, clinicId, secId); }
-
-// ── DELETE PHOTO ──────────────────────────────────────────────────────────
-async function deletePhoto(docId, clinicId, secId) {
-  var g = galleries[docId]; if (!g||!g.length) return;
-  var di = cardIdx[docId]||0;
-  var photo = g[di];
-  g.splice(di, 1);
-  cardIdx[docId] = Math.max(0, di-1);
-  if (photo.pending) {
-    // Not yet uploaded — just remove from pendingAdds
-    var pi = pendingAdds.findIndex(function(p){ return p.entry === photo; });
-    if (pi !== -1) { URL.revokeObjectURL(pendingAdds[pi].previewUrl); pendingAdds.splice(pi, 1); }
-  } else if (photo.isSeed) {
-    pendingDeletes.push({ type: 'seed', docId: docId });
-  } else if (photo.publicId) {
-    pendingDeletes.push({ type: 'photo', docId: docId, publicId: photo.publicId });
-  }
-  showToast('\uD83D\uDDD1\uFE0F Removed \u2014 click Save to confirm');
-  refreshCard(docId, clinicId, secId);
-  updateStats();
-  updateSaveBar();
-}
-
-// ── DOWNLOAD ──────────────────────────────────────────────────────────────
-function getDocName(docId) {
-  var loc = DOC_LOC[docId]||{};
-  var clinic = CLINICS.find(function(c){ return c.id === loc.clinicId; });
-  var doc = null;
-  if (clinic) clinic.sections.forEach(function(s){ s.doctors.forEach(function(d){ if(d.id===docId) doc=d; }); });
-  return doc ? doc.name.replace(/[^a-zA-Z0-9]/g,'_') : 'Doctor';
-}
-
-function downloadPhoto(docId) {
-  var g = galleries[docId]; if (!g||!g.length) return;
-  var p = g[cardIdx[docId]||0];
-  var docName = getDocName(docId);
-  var ext = (p.name&&p.name.split('.').pop())||'jpg';
-  var filename = docName+'_'+(cardIdx[docId]||0 + 1)+'.'+ext;
-  var url = p.dlUrl || p.origUrl || p.src;
-  triggerDownload(url, filename);
-}
-
-async function downloadAllPhotos(docId, name) {
-  var g = galleries[docId]; if (!g||!g.length) return;
-  var safeName = name.replace(/[^a-zA-Z0-9]/g,'_');
-  showToast('\u2B07\uFE0F Downloading '+g.length+' photos...');
-  for (var i = 0; i < g.length; i++) {
-    var p = g[i];
-    var ext = (p.name&&p.name.split('.').pop())||'jpg';
-    var filename = safeName+'_'+(i+1)+'.'+ext;
-    var url = p.dlUrl || p.origUrl || p.src;
-    triggerDownload(url, filename);
-    await new Promise(function(r){ setTimeout(r, 800); });
-  }
-}
-
-async function downloadClinic(clinicId) {
-  var clinic = CLINICS.find(function(c){ return c.id === clinicId; }); if (!clinic) return;
-  var all = [];
-  clinic.sections.forEach(function(s){ s.doctors.forEach(function(d){ (galleries[d.id]||[]).forEach(function(p){ all.push({p:p,doc:d}); }); }); });
-  if (!all.length) { showToast('\u26A0\uFE0F No photos in this clinic'); return; }
-  showToast('\u2B07\uFE0F Downloading '+all.length+' photos...');
-  for (var i = 0; i < all.length; i++) {
-    var item = all[i];
-    var ext = (item.p.name&&item.p.name.split('.').pop())||'jpg';
-    var filename = item.doc.name.replace(/[^a-zA-Z0-9]/g,'_')+'_'+(i+1)+'.'+ext;
-    var url = item.p.dlUrl || item.p.origUrl || item.p.src;
-    triggerDownload(url, filename);
-    await new Promise(function(r){ setTimeout(r, 800); });
-  }
-}
-
-function downloadDoc(docId, idx) {
-  var docs = docFiles[docId]; if (!docs||!docs[idx]) return;
-  var d = docs[idx];
-  triggerDownload(d.dlUrl||d.src, d.name);
-}
-
-function triggerDownload(url, filename) {
-  if (!url) { showToast('\u26A0\uFE0F No download URL available'); return; }
-  // For Cloudinary URLs, fl_attachment forces Content-Disposition: attachment
-  if (url.indexOf('cloudinary.com') !== -1 && url.indexOf('fl_attachment') === -1) {
-    url = url.replace('/image/upload/', '/image/upload/fl_attachment:'+filename.replace(/[^a-zA-Z0-9._-]/g,'_')+'/');
-  }
-  var a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.target = '_blank';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  showToast('\u2B07\uFE0F Downloading '+filename+'...');
-}
-
-// ── DOCUMENTS ─────────────────────────────────────────────────────────────
-async function addDocs(docId, clinicId, secId, input) {
-  var files = input.files ? Array.from(input.files) : (Array.isArray(input)?input:[]);
-  if (!files.length) return;
-  var ok = 0;
-  for (var i = 0; i < files.length; i++) {
-    var file = files[i];
-    try {
-      showToast('\u2B06\uFE0F Uploading ' + file.name + '...');
-      var fd = new FormData();
-      fd.append('file', file);
-      fd.append('upload_preset', CDN_PRESET);
-      fd.append('folder', 'clinic-directory/' + docId + '/docs');
-      fd.append('resource_type', 'raw');
-      var res = await fetch('https://api.cloudinary.com/v1_1/' + CDN_CLOUD + '/raw/upload', { method: 'POST', body: fd });
-      if (!res.ok) throw new Error('Upload failed: ' + res.status);
-      var d = await res.json();
-      var dlUrl = d.secure_url;
-      docFiles[docId].push({ name: file.name, type: file.type, size: file.size, src: dlUrl, dlUrl: dlUrl, publicId: d.public_id });
-      // Persist to localStorage
-      try {
-        var allDocs = JSON.parse(localStorage.getItem('cdnDocs') || '{}');
-        if (!allDocs[docId]) allDocs[docId] = [];
-        allDocs[docId].push({ name: file.name, type: file.type, size: file.size, dlUrl: dlUrl, publicId: d.public_id });
-        localStorage.setItem('cdnDocs', JSON.stringify(allDocs));
-      } catch(e) {}
-      ok++;
-    } catch(err) {
-      console.error('Doc upload failed:', err);
-      showToast('\u26A0\uFE0F Failed: ' + err.message);
-    }
-  }
-  if (ok > 0) showToast('\u2705 ' + ok + ' document' + (ok>1?'s':'') + ' uploaded');
-  refreshCard(docId, clinicId, secId);
-}
-
-function deleteDoc(docId, idx, clinicId, secId) {
-  var docs = docFiles[docId]; if (!docs) return;
-  var doc = docs[idx];
-  docs.splice(idx, 1);
-  // Remove from localStorage
-  try {
-    var allDocs = JSON.parse(localStorage.getItem('cdnDocs') || '{}');
-    if (allDocs[docId] && doc.publicId) {
-      allDocs[docId] = allDocs[docId].filter(function(d){ return d.publicId !== doc.publicId; });
-      localStorage.setItem('cdnDocs', JSON.stringify(allDocs));
-    }
-  } catch(e) {}
-  showToast('\uD83D\uDDD1\uFE0F Document removed');
-  refreshCard(docId, clinicId, secId);
-}
-
-// ── GENDER ────────────────────────────────────────────────────────────────
-function setGender(docId, sel) {
-  genderOv[docId] = sel.value;
-  // Persist gender in localStorage
-  try {
-    var g = JSON.parse(localStorage.getItem('cdnGender')||'{}');
-    g[docId] = sel.value;
-    localStorage.setItem('cdnGender', JSON.stringify(g));
-  } catch(e) {}
-  var card = document.getElementById('card_'+docId);
-  if (card) {
-    var dot = card.querySelector('.gender-dot');
-    if (dot) dot.className = 'gender-dot'+(sel.value?' '+sel.value:'');
-    sel.className = 'gender-select'+(sel.value?' '+sel.value:'');
-  }
-}
-
-// Load gender from localStorage on init
-function loadGenders() {
-  try {
-    var g = JSON.parse(localStorage.getItem('cdnGender')||'{}');
-    Object.keys(g).forEach(function(k){ genderOv[k] = g[k]; });
-  } catch(e) {}
-}
-
-// ── FILTER ────────────────────────────────────────────────────────────────
-var _filterTimer = null;
-function filterCards(q) {
-  clearTimeout(_filterTimer);
-  _filterTimer = setTimeout(function() {
-    var ql = q.toLowerCase().trim();
-    var panel = document.getElementById('panelWrap'); if (!panel) return;
-    panel.querySelectorAll('.doctor-card').forEach(function(card) {
-      card.classList.toggle('hidden', !!(ql && card.dataset.name.indexOf(ql) === -1));
-    });
-  }, 120);
-}
-
-// ── DRAG & DROP ───────────────────────────────────────────────────────────
-function dragOver(e, docId) { e.preventDefault(); e.stopPropagation(); var c=document.getElementById('card_'+docId); if(c) c.classList.add('drag-over'); }
-function dragLeave(e, docId) {
-  var c = document.getElementById('card_'+docId); if (!c) return;
-  var r = c.getBoundingClientRect();
-  if (e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom) return;
-  c.classList.remove('drag-over');
-}
-function onDrop(e, docId, clinicId, secId) {
-  e.preventDefault(); e.stopPropagation();
-  var c = document.getElementById('card_'+docId); if (c) c.classList.remove('drag-over');
-  var files = Array.from(e.dataTransfer.files);
-  var imgs = files.filter(function(f){ return f.type.indexOf('image/')===0; });
-  var docs = files.filter(function(f){ return f.type.indexOf('image/')!==0; });
-  if (imgs.length) addPhotos(docId, clinicId, secId, imgs);
-  if (docs.length) addDocs(docId, clinicId, secId, docs);
-}
-
-// ── LIGHTBOX ──────────────────────────────────────────────────────────────
-function openLb(docId, idx) { lbDocId=docId; lbIdx=idx; document.getElementById('lightbox').classList.add('open'); renderLb(); }
-function closeLb() { document.getElementById('lightbox').classList.remove('open'); lbDocId=null; }
-function renderLb() {
-  var g = galleries[lbDocId]; if (!g||!g.length) return;
-  document.getElementById('lbImg').src = g[lbIdx].origUrl||g[lbIdx].src;
-  document.getElementById('lbCounter').textContent = (lbIdx+1)+'/'+g.length;
-  document.getElementById('lbStrip').innerHTML = g.map(function(p,i){
-    return '<img class="lb-thumb'+(i===lbIdx?' active':'')+'" src="'+p.src+'" onclick="lbSetIdx('+i+')" alt="" loading="lazy">';
-  }).join('');
-}
-function lbNav(dir) { if(!lbDocId) return; var g=galleries[lbDocId]; if(!g||!g.length) return; lbIdx=(lbIdx+dir+g.length)%g.length; renderLb(); }
-function lbSetIdx(i) { lbIdx=i; renderLb(); }
-
-document.addEventListener('keydown', function(e) {
-  var open = document.getElementById('lightbox').classList.contains('open');
-  if (e.key==='Escape'&&open) closeLb();
-  if (!open) return;
-  if (e.key==='ArrowRight') lbNav(1);
-  if (e.key==='ArrowLeft')  lbNav(-1);
-});
-document.getElementById('lightbox').addEventListener('click', function(e) {
-  if (e.target===this&&document.getElementById('lightbox').classList.contains('open')) closeLb();
-});
-
-// ── STATS ─────────────────────────────────────────────────────────────────
-function updateStats() {
-  var active = CLINICS.filter(function(c){ return c.status!=='stopped'; }).length;
-  var docs = CLINICS.reduce(function(n,c){ return n+c.sections.reduce(function(m,s){ return m+s.doctors.length; },0); }, 0);
-  var photos = Object.values(galleries).reduce(function(n,g){ return n+g.length; }, 0);
-  var cEl=document.getElementById('statClinics'); if(cEl) cEl.textContent=active;
-  var dEl=document.getElementById('statDoctors'); if(dEl) dEl.textContent=docs+'+';
-  var pEl=document.getElementById('statPhotos');  if(pEl) pEl.textContent=photos;
-}
-
-// ── TOAST ─────────────────────────────────────────────────────────────────
-var _tt = null;
-function showToast(msg) {
-  var t = document.getElementById('toast'); if (!t) return;
-  t.textContent = msg; t.classList.add('show');
-  clearTimeout(_tt); _tt = setTimeout(function(){ t.classList.remove('show'); }, 3200);
-}
-
-// ── START ─────────────────────────────────────────────────────────────────
-loadGenders();
-boot();
-</script>
-</body>
-</html<img src="data:image/png;base64,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" style="height:28px;width:auto;background:white;border-radius:50%;padding:4px" alt="DO">
+>
