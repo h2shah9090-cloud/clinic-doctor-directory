@@ -80,7 +80,7 @@ input,select{font-family:inherit}
 .gallery-empty{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--muted)}
 .gallery-empty svg{opacity:0.4}
 .gallery-empty span{font-size:12px}
-.awaiting-badge{position:absolute;top:10px;left:10px;background:#c9a84c22;border:1px solid var(--gold);color:var(--gold);font-size:9px;font-weight:700;letter-spacing:1px;padding:2px 8px;border-radius:10px;text-transform:uppercase}
+
 .silhouette-wrap{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
 .silhouette-img{height:100%;object-fit:cover;object-position:top;opacity:0.5;filter:grayscale(1)}
 .privacy-badge{position:absolute;bottom:8px;left:0;right:0;text-align:center;font-size:10px;color:var(--muted)}
@@ -597,8 +597,7 @@ function cardHTML(doc, clinicId, secId) {
       '<label class="thumb-add" title="Add photos"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
       '<input type="file" accept="image/*" multiple onchange="addPhotos(\''+doc.id+'\',\''+clinicId+'\',\''+secId+'\',this)"></label></div>';
   } else {
-    var aw = doc.awaitingPhoto ? '<div class="awaiting-badge">&#9203; Photo Pending</div>' : '';
-    gallHtml = '<div class="gallery-wrap"><div class="gallery-empty"><svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span>No photo yet</span></div>'+aw+'</div>' +
+    gallHtml = '<div class="gallery-wrap"><div class="gallery-empty"><svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span>No photo yet</span></div></div>' +
       '<div class="thumb-strip"><label class="thumb-add" style="width:100%;border-radius:4px">' +
       '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Upload Photos' +
       '<input type="file" accept="image/*" multiple onchange="addPhotos(\''+doc.id+'\',\''+clinicId+'\',\''+secId+'\',this)"></label></div>';
