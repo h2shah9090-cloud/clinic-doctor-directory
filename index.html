@@ -378,40 +378,6 @@ const SILHOUETTE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'
 
 
 
-// ── SUPABASE (metadata sync only — no storage) ───────────────────────────
-/* ── SUPABASE SETUP SQL (run once in Supabase SQL Editor) ──────────────────
-CREATE TABLE IF NOT EXISTS cd_photos (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, doc_id text NOT NULL, name text, supa_path text UNIQUE, supa_url text, thumb_url text, is_user boolean DEFAULT true, created_at timestamptz DEFAULT now());
-CREATE TABLE IF NOT EXISTS cd_gender (doc_id text PRIMARY KEY, gender text, updated_at timestamptz DEFAULT now());
-CREATE TABLE IF NOT EXISTS cd_notes  (doc_id text PRIMARY KEY, note text, updated_at timestamptz DEFAULT now());
-ALTER TABLE cd_photos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE cd_gender ENABLE ROW LEVEL SECURITY;
-ALTER TABLE cd_notes  ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "anon_all" ON cd_photos FOR ALL TO anon USING (true) WITH CHECK (true);
-CREATE POLICY "anon_all" ON cd_gender FOR ALL TO anon USING (true) WITH CHECK (true);
-CREATE POLICY "anon_all" ON cd_notes  FOR ALL TO anon USING (true) WITH CHECK (true);
-────────────────────────────────────────────────────────────────────────── */
-const SB_URL = 'https://yngfvoijlgxnmgsxgnjv.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InluZ2Z2b2lqbGd4bm1nc3hnbmp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDEzNzIsImV4cCI6MjA5NjA3NzM3Mn0.cPC8hmKvoSO5YdFQ7K5u9VVarJ43brIKZZeCiOLpuEA';
-
-async function sbFetch(path, opts) {
-  var res = await fetch(SB_URL+'/rest/v1/'+path, Object.assign({
-    headers: {'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=representation'}
-  }, opts||{}));
-  if (!res.ok) { console.warn('SB error:', res.status, await res.text()); return null; }
-  return res.json();
-}
-async function sbUpsert(table, conflict, row) {
-  try {
-    return await sbFetch(table+'?on_conflict='+conflict, {method:'POST', headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=representation'}, body:JSON.stringify(row)});
-  } catch(e) { console.warn('sbUpsert failed (non-critical):', e.message); return null; }
-}
-async function sbDelete(table, col, val) {
-  return fetch(SB_URL+'/rest/v1/'+table+'?'+col+'=eq.'+encodeURIComponent(val), {method:'DELETE', headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}}).catch(function(){});
-}
-async function sbSelect(table, qs) {
-  return sbFetch(table+(qs?'?'+qs:''));
-}
-
 // ── CLOUDINARY ────────────────────────────────────────────────────────────
 const CDN_CLOUD  = 'ddpihsnhu';
 const CDN_PRESET = 'clinic-directory';
@@ -512,42 +478,11 @@ function boot() {
   renderSidebar();
   renderPanel();
   updateStats();
-  // Sync from Supabase (multi-device) + auto-migrate seeds
-  syncFromSupabase().then(function(){
-    autoMigrateSeeds();
-  });
+  // Auto-migrate seed photos to Cloudinary on first run
+  autoMigrateSeeds();
 }
 
-async function syncFromSupabase() {
-  try {
-    var bar = document.createElement('div');
-    bar.className='sync-bar'; document.body.appendChild(bar);
-    // Load photos
-    var photos = await sbSelect('cd_photos','order=created_at.asc');
-    if (photos && photos.length) {
-      photos.forEach(function(r){
-        if (!galleries[r.doc_id]) return;
-        var exists = galleries[r.doc_id].some(function(p){ return p.publicId===r.supa_path; });
-        if (!exists) {
-          var entry = {src:r.thumb_url||r.supa_url, origUrl:r.supa_url, dlUrl:r.supa_url, publicId:r.supa_path, name:r.name, user:true};
-          galleries[r.doc_id].push(entry);
-          // Also update localStorage
-          var local = dbGetPhotos(r.doc_id);
-          var lexists = local.some(function(p){ return p.publicId===r.supa_path; });
-          if (!lexists) { local.push({publicId:r.supa_path,name:r.name,origUrl:r.supa_url,thumbUrl:r.thumb_url,dlUrl:r.supa_url}); dbSetPhotos(r.doc_id,local); }
-        }
-      });
-      renderPanel();
-      updateStats();
-    }
-    // Load gender
-    var genders = await sbSelect('cd_gender','');
-    if (genders && genders.length) {
-      genders.forEach(function(r){ genderMap[r.doc_id]=r.gender; dbSetGender(r.doc_id,r.gender); });
-    }
-    bar.remove();
-  } catch(e) { console.warn('Supabase sync failed:', e); }
-}
+
 
 async function autoMigrateSeeds() {
   var migrated = lsGet('seedsMigrated');
@@ -916,10 +851,7 @@ function editNotes(btn) {
   // Update button immediately
   btn.textContent = '📝'+(val.trim()?' ✓':'')+' Notes';
   btn.title = val.trim()||'Add notes';
-  // Sync to Supabase
-  if (val.trim()) {
-    sbUpsert('cd_notes','doc_id',{doc_id:docId,note:val.trim(),updated_at:new Date().toISOString()}).catch(function(){});
-  }
+
   showToast('📝 Notes saved');
 }
 
@@ -981,8 +913,6 @@ async function saveChanges() {
       var photos=dbGetPhotos(a.docId);
       photos.push({publicId:r.publicId,name:a.file.name,origUrl:r.origUrl,thumbUrl:r.thumbUrl,dlUrl:r.dlUrl});
       dbSetPhotos(a.docId, photos);
-      // Sync to Supabase for multi-device access
-      sbUpsert('cd_photos','supa_path',{doc_id:a.docId,name:a.file.name,supa_path:r.publicId,supa_url:r.origUrl,thumb_url:r.thumbUrl,is_user:true}).catch(function(){});
       ok++;
     } catch(e){console.error(e); showToast('⚠️ Failed: '+e.message); fail++;}
   }
@@ -992,7 +922,6 @@ async function saveChanges() {
     else if(d.type==='photo'){
       var photos2=dbGetPhotos(d.docId).filter(function(p){return p.publicId!==d.publicId;});
       dbSetPhotos(d.docId, photos2);
-      sbDelete('cd_photos','supa_path',d.publicId).catch(function(){});
     }
     ok++;
   }
