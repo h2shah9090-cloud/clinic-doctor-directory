@@ -148,6 +148,18 @@ input,select{font-family:inherit}
 .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--navy2);color:var(--white);border:1px solid rgba(0,196,180,0.3);border-radius:10px;padding:11px 20px;font-size:13px;font-weight:500;z-index:9999;pointer-events:none;white-space:nowrap;transition:transform .3s,opacity .3s;opacity:0;box-shadow:0 8px 32px rgba(0,0,0,0.5)}
 .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.gate{position:fixed;inset:0;background:var(--navy);z-index:99999;display:flex;align-items:center;justify-content:center}
+.gate-box{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:40px;width:100%;max-width:380px;text-align:center}
+.gate-logo{margin-bottom:20px}
+.gate-logo img{height:48px;width:auto}
+.gate-title{font-family:'Playfair Display',serif;font-size:24px;font-weight:700;margin-bottom:6px}
+.gate-sub{font-size:13px;color:var(--muted);margin-bottom:28px}
+.gate-input{width:100%;background:var(--navy3);border:1px solid var(--border);border-radius:10px;padding:12px 16px;color:var(--white);font-size:15px;outline:none;transition:border .2s;text-align:center;letter-spacing:2px;margin-bottom:12px}
+.gate-input:focus{border-color:var(--accent)}
+.gate-input.error{border-color:var(--red)}
+.gate-btn{width:100%;background:var(--accent);color:#09132a;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;transition:opacity .2s}
+.gate-btn:hover{opacity:0.85}
+.gate-err{color:var(--red);font-size:12px;margin-top:8px;height:16px}
 .sync-bar{position:fixed;top:0;left:0;right:0;height:3px;z-index:9990;background:linear-gradient(90deg,transparent,var(--accent),transparent);background-size:200% 100%;animation:shimmer 1.4s ease infinite}
 @media(max-width:900px){.app-layout{padding:16px;gap:14px}.sidebar{width:180px}.doctors-grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}.clinic-assets{grid-template-columns:1fr}}
 @media(max-width:700px){.app-layout{flex-direction:column;padding:12px}.sidebar{width:100%;position:static;max-height:none}.clinic-list{flex-direction:row;flex-wrap:wrap;gap:6px;padding-bottom:8px}.clinic-btn{width:auto;height:32px;padding:0 12px;border-left:none;border-radius:20px;border:1px solid var(--border);font-size:11px;flex-shrink:0}.clinic-btn.active{background:var(--accent);color:#09132a;border-color:var(--accent)}.doc-badge{display:none}.clinic-divider{display:none}.panel-search{width:100%}.doctors-grid{grid-template-columns:1fr 1fr;gap:10px}}
@@ -187,6 +199,18 @@ input,select{font-family:inherit}
   <div class="save-bar-actions">
     <button class="btn-discard" onclick="discardChanges()">Discard</button>
     <button class="btn-save" id="btnSave" onclick="saveChanges()">💾 Save Changes</button>
+  </div>
+</div>
+<div class="gate" id="gate">
+  <div class="gate-box">
+    <div class="gate-logo">
+      <img src="data:image/png;base64,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" height="48" alt="Digital Odyssey">
+    </div>
+    <div class="gate-title">Clinic &amp; Doctor Directory</div>
+    <div class="gate-sub">Digital Odyssey &nbsp;&middot;&nbsp; Private Access</div>
+    <input class="gate-input" id="gateInput" type="password" placeholder="Enter password" onkeydown="if(event.key==='Enter')checkPass()">
+    <button class="gate-btn" onclick="checkPass()">Enter</button>
+    <div class="gate-err" id="gateErr"></div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -933,8 +957,45 @@ function showToast(msg){
   clearTimeout(_tt); _tt=setTimeout(function(){t.classList.remove('show');},3200);
 }
 
+// ── PASSWORD GATE ─────────────────────────────────────────────────────────
+var PASS_HASH = '8e1b8d74d28e33d5ade3db4f53aa71e4'; // MD5 of "Abubakar@2024"
+
+function md5(str) {
+  // Simple hash using btoa + string ops (not cryptographic, but sufficient for gate)
+  var hash = 0;
+  for (var i = 0; i < str.length; i++) {
+    var ch = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + ch;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(16).padStart(8,'0');
+}
+
+function checkPass() {
+  var input = document.getElementById('gateInput');
+  var err   = document.getElementById('gateErr');
+  var val   = input.value.trim();
+  // Simple check — password is "Abubakar@2024"
+  if (val === 'Abubakar@2024') {
+    document.getElementById('gate').style.display = 'none';
+    try { sessionStorage.setItem('cdAuth','1'); } catch(e) {}
+    boot();
+  } else {
+    input.classList.add('error');
+    err.textContent = 'Incorrect password. Please try again.';
+    input.value = '';
+    setTimeout(function(){ input.classList.remove('error'); err.textContent=''; }, 2000);
+  }
+}
+
 // ── START ─────────────────────────────────────────────────────────────────
-boot();
+// Check if already authenticated this session
+try {
+  if (sessionStorage.getItem('cdAuth') === '1') {
+    document.getElementById('gate').style.display = 'none';
+    boot();
+  }
+} catch(e) { /* sessionStorage blocked — show gate */ }
 
 </script>
 </body>
