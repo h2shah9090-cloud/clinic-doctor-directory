@@ -552,6 +552,9 @@ async function uploadAsset(input) {
 }
 
 function delAsset(btn) {
+  confirmDelete(function(){ _doDelAsset(btn); }); return;
+}
+function _doDelAsset(btn) {
   var assets = dbGetClinicAssets(btn.dataset.clinic);
   assets[btn.dataset.type].splice(parseInt(btn.dataset.idx),1);
   dbSetClinicAssets(btn.dataset.clinic, assets);
@@ -745,6 +748,11 @@ function setPhotoIdx(img) {
 }
 
 async function removePhoto(btn) {
+  confirmDelete(function(){
+  _doRemovePhoto(btn);
+  }); return;
+}
+async function _doRemovePhoto(btn) {
   var docId=btn.dataset.doc, clinicId=btn.dataset.clinic, secId=btn.dataset.sec;
   var g=galleries[docId]; if(!g||!g.length) return;
   var di=cardIdx[docId]||0, photo=g[di];
@@ -872,6 +880,9 @@ function dlDoc(btn) {
 }
 
 function delDoc(btn) {
+  confirmDelete(function(){ _doDelDoc(btn); }); return;
+}
+function _doDelDoc(btn) {
   var docId=btn.dataset.doc, idx=parseInt(btn.dataset.idx);
   var docs=docFiles[docId]; if(!docs) return;
   var pub=docs[idx]&&docs[idx].publicId;
@@ -955,6 +966,17 @@ function showToast(msg){
   var t=document.getElementById('toast'); if(!t) return;
   t.textContent=msg; t.classList.add('show');
   clearTimeout(_tt); _tt=setTimeout(function(){t.classList.remove('show');},3200);
+}
+
+// ── CONFIRM DELETE ────────────────────────────────────────────────────────
+function confirmDelete(callback) {
+  var pass = prompt('Enter password to confirm deletion:');
+  if (pass === null) return; // cancelled
+  if (pass === 'Harsh@123') {
+    callback();
+  } else {
+    showToast('⚠️ Incorrect password — deletion cancelled');
+  }
 }
 
 // ── PASSWORD GATE ─────────────────────────────────────────────────────────
