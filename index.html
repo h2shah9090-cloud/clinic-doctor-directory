@@ -378,6 +378,40 @@ const SILHOUETTE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'
 
 
 
+// ── SUPABASE (metadata sync only — no storage) ───────────────────────────
+/* ── SUPABASE SETUP SQL (run once in Supabase SQL Editor) ──────────────────
+CREATE TABLE IF NOT EXISTS cd_photos (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, doc_id text NOT NULL, name text, supa_path text UNIQUE, supa_url text, thumb_url text, is_user boolean DEFAULT true, created_at timestamptz DEFAULT now());
+CREATE TABLE IF NOT EXISTS cd_gender (doc_id text PRIMARY KEY, gender text, updated_at timestamptz DEFAULT now());
+CREATE TABLE IF NOT EXISTS cd_notes  (doc_id text PRIMARY KEY, note text, updated_at timestamptz DEFAULT now());
+ALTER TABLE cd_photos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cd_gender ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cd_notes  ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "anon_all" ON cd_photos FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "anon_all" ON cd_gender FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "anon_all" ON cd_notes  FOR ALL TO anon USING (true) WITH CHECK (true);
+────────────────────────────────────────────────────────────────────────── */
+const SB_URL = 'https://yngfvoijlgxnmgsxgnjv.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InluZ2Z2b2lqbGd4bm1nc3hnbmp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDEzNzIsImV4cCI6MjA5NjA3NzM3Mn0.cPC8hmKvoSO5YdFQ7K5u9VVarJ43brIKZZeCiOLpuEA';
+
+async function sbFetch(path, opts) {
+  var res = await fetch(SB_URL+'/rest/v1/'+path, Object.assign({
+    headers: {'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=representation'}
+  }, opts||{}));
+  if (!res.ok) { console.warn('SB error:', res.status, await res.text()); return null; }
+  return res.json();
+}
+async function sbUpsert(table, conflict, row) {
+  try {
+    return await sbFetch(table+'?on_conflict='+conflict, {method:'POST', headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=representation'}, body:JSON.stringify(row)});
+  } catch(e) { console.warn('sbUpsert failed (non-critical):', e.message); return null; }
+}
+async function sbDelete(table, col, val) {
+  return fetch(SB_URL+'/rest/v1/'+table+'?'+col+'=eq.'+encodeURIComponent(val), {method:'DELETE', headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}}).catch(function(){});
+}
+async function sbSelect(table, qs) {
+  return sbFetch(table+(qs?'?'+qs:''));
+}
+
 // ── CLOUDINARY ────────────────────────────────────────────────────────────
 const CDN_CLOUD  = 'ddpihsnhu';
 const CDN_PRESET = 'clinic-directory';
@@ -443,14 +477,18 @@ function initAll() {
         cardIdx[doc.id]   = 0;
         DOC_LOC[doc.id]   = {clinicId: clinic.id, secId: sec.sectionId};
         genderMap[doc.id] = dbGetGender(doc.id) || doc.gender || '';
-        // Seed photo (unless removed)
+        // Seed photo (unless removed) — use Cloudinary URL if migrated, else base64
         if (!removedSeeds[doc.id]) {
+          var migrated = lsGet('seedsMigrated');
           if (SEED_PHOTOS[doc.id]) {
             SEED_PHOTOS[doc.id].forEach(function(src,i){
               galleries[doc.id].push({src:src, name:doc.name+'_'+(i+1)+'.jpg', isSeed:true});
             });
           } else if (doc.seed && SEEDS[doc.seed]) {
-            galleries[doc.id].push({src:SEEDS[doc.seed], name:doc.name+'_1.jpg', isSeed:true});
+            var m = migrated[doc.seed];
+            var src = m ? m.thumbUrl : SEEDS[doc.seed];
+            var origUrl = m ? m.origUrl : null;
+            galleries[doc.id].push({src:src, origUrl:origUrl, dlUrl:m?m.origUrl:null, name:doc.name+'_1.jpg', isSeed:true, seedKey:doc.seed});
           }
         }
         // Uploaded photos
@@ -474,6 +512,99 @@ function boot() {
   renderSidebar();
   renderPanel();
   updateStats();
+  // Sync from Supabase (multi-device) + auto-migrate seeds
+  syncFromSupabase().then(function(){
+    autoMigrateSeeds();
+  });
+}
+
+async function syncFromSupabase() {
+  try {
+    var bar = document.createElement('div');
+    bar.className='sync-bar'; document.body.appendChild(bar);
+    // Load photos
+    var photos = await sbSelect('cd_photos','order=created_at.asc');
+    if (photos && photos.length) {
+      photos.forEach(function(r){
+        if (!galleries[r.doc_id]) return;
+        var exists = galleries[r.doc_id].some(function(p){ return p.publicId===r.supa_path; });
+        if (!exists) {
+          var entry = {src:r.thumb_url||r.supa_url, origUrl:r.supa_url, dlUrl:r.supa_url, publicId:r.supa_path, name:r.name, user:true};
+          galleries[r.doc_id].push(entry);
+          // Also update localStorage
+          var local = dbGetPhotos(r.doc_id);
+          var lexists = local.some(function(p){ return p.publicId===r.supa_path; });
+          if (!lexists) { local.push({publicId:r.supa_path,name:r.name,origUrl:r.supa_url,thumbUrl:r.thumb_url,dlUrl:r.supa_url}); dbSetPhotos(r.doc_id,local); }
+        }
+      });
+      renderPanel();
+      updateStats();
+    }
+    // Load gender
+    var genders = await sbSelect('cd_gender','');
+    if (genders && genders.length) {
+      genders.forEach(function(r){ genderMap[r.doc_id]=r.gender; dbSetGender(r.doc_id,r.gender); });
+    }
+    bar.remove();
+  } catch(e) { console.warn('Supabase sync failed:', e); }
+}
+
+async function autoMigrateSeeds() {
+  var migrated = lsGet('seedsMigrated');
+  var keys = Object.keys(SEEDS);
+  var remaining = keys.filter(function(k){ return !migrated[k]; });
+  if (!remaining.length) return; // all done
+  
+  console.log('Auto-migrating', remaining.length, 'seed photos to Cloudinary...');
+  var bar = document.createElement('div');
+  bar.className = 'sync-bar'; bar.id = 'migBar';
+  document.body.appendChild(bar);
+
+  for (var i = 0; i < remaining.length; i++) {
+    var key = remaining[i];
+    try {
+      var dataUri = SEEDS[key];
+      var arr = dataUri.split(',');
+      var mime = arr[0].match(/:(.*?);/)[1];
+      var bstr = atob(arr[1]); var n = bstr.length;
+      var u8arr = new Uint8Array(n); while(n--) u8arr[n] = bstr.charCodeAt(n);
+      var blob = new Blob([u8arr], {type:mime});
+      var file = new File([blob], 'seed_'+key+'.jpg', {type:'image/jpeg'});
+      var fd = new FormData();
+      fd.append('file', file);
+      fd.append('upload_preset', CDN_PRESET);
+      fd.append('folder', 'clinic-directory/seeds');
+      fd.append('public_id', 'seed_'+key);
+      var res = await fetch('https://api.cloudinary.com/v1_1/'+CDN_CLOUD+'/image/upload', {method:'POST',body:fd});
+      if (!res.ok) throw new Error('HTTP '+res.status);
+      var d = await res.json();
+      migrated[key] = {
+        origUrl: d.secure_url,
+        thumbUrl: CDN_BASE+'/w_400,h_480,c_fill,q_75,f_auto/'+d.public_id,
+        publicId: d.public_id
+      };
+      lsSet('seedsMigrated', migrated);
+      // Update galleries in memory with Cloudinary URL
+      Object.keys(galleries).forEach(function(docId){
+        galleries[docId].forEach(function(p){
+          if (p.isSeed && p.seedKey === key) {
+            p.src = migrated[key].thumbUrl;
+            p.origUrl = migrated[key].origUrl;
+          }
+        });
+      });
+      console.log('✅ Migrated:', key);
+    } catch(e) {
+      console.warn('⚠️ Failed to migrate seed:', key, e.message);
+    }
+  }
+  var mb = document.getElementById('migBar');
+  if (mb) mb.remove();
+  var allDone = Object.keys(SEEDS).every(function(k){ return migrated[k]; });
+  if (allDone) {
+    console.log('✅ All seeds migrated to Cloudinary');
+    renderPanel(); // re-render with Cloudinary URLs
+  }
 }
 
 // ── SIDEBAR ───────────────────────────────────────────────────────────────
@@ -584,6 +715,7 @@ function renderPanel() {
     ' &nbsp;·&nbsp; <span>'+td+'</span> doctors &nbsp;·&nbsp; <span>'+wp+'</span> with photos</div>'+
     '</div><div class="panel-actions">'+
     '<input class="panel-search" type="text" placeholder="Search doctor…" oninput="filterCards(this.value)" maxlength="60" autocomplete="off">'+
+    '<button class="btn" onclick="filterNeedsPhoto(this)" style="font-size:12px;padding:7px 12px" title="Show doctors without photos">📷 No Photo</button>'+
     '<button class="btn-dl-all" onclick="downloadClinic()">↓ Download All</button>'+
     '</div></div>';
 
@@ -669,6 +801,10 @@ function cardHTML(doc, clinicId, secId) {
   } else if (!doc.silhouette) {
     acts = '<button class="btn primary" data-doc="'+doc.id+'" onclick="addMorePhotos(this)">↑ Upload</button>';
   }
+  // Notes button always shown
+  var notes = lsGet('notes')[doc.id]||'';
+  acts += '<button class="btn" data-doc="'+doc.id+'" onclick="editNotes(this)" title="'+(notes?esc(notes):'Add notes')+'">'+
+    '📝'+(notes?' ✓':'')+' Notes</button>';
 
   return '<div class="doctor-card" id="card_'+doc.id+'" data-name="'+esc(doc.name.toLowerCase())+'"'+
     ' ondragover="dragOver(event,this)" ondragleave="dragLeave(event,this)"'+
@@ -769,6 +905,24 @@ async function _doRemovePhoto(btn) {
   refreshCard(docId, clinicId, secId); updateStats(); updateSaveBar();
 }
 
+function editNotes(btn) {
+  var docId = btn.dataset.doc;
+  var notes = lsGet('notes');
+  var current = notes[docId]||'';
+  var val = prompt('Notes for this doctor (visible to team):', current);
+  if (val === null) return;
+  notes[docId] = val.trim();
+  lsSet('notes', notes);
+  // Update button immediately
+  btn.textContent = '📝'+(val.trim()?' ✓':'')+' Notes';
+  btn.title = val.trim()||'Add notes';
+  // Sync to Supabase
+  if (val.trim()) {
+    sbUpsert('cd_notes','doc_id',{doc_id:docId,note:val.trim(),updated_at:new Date().toISOString()}).catch(function(){});
+  }
+  showToast('📝 Notes saved');
+}
+
 function dlPhoto(btn) {
   var g=galleries[btn.dataset.doc]; if(!g||!g.length) return;
   var p=g[cardIdx[btn.dataset.doc]||0];
@@ -827,6 +981,8 @@ async function saveChanges() {
       var photos=dbGetPhotos(a.docId);
       photos.push({publicId:r.publicId,name:a.file.name,origUrl:r.origUrl,thumbUrl:r.thumbUrl,dlUrl:r.dlUrl});
       dbSetPhotos(a.docId, photos);
+      // Sync to Supabase for multi-device access
+      sbUpsert('cd_photos','supa_path',{doc_id:a.docId,name:a.file.name,supa_path:r.publicId,supa_url:r.origUrl,thumb_url:r.thumbUrl,is_user:true}).catch(function(){});
       ok++;
     } catch(e){console.error(e); showToast('⚠️ Failed: '+e.message); fail++;}
   }
@@ -836,6 +992,7 @@ async function saveChanges() {
     else if(d.type==='photo'){
       var photos2=dbGetPhotos(d.docId).filter(function(p){return p.publicId!==d.publicId;});
       dbSetPhotos(d.docId, photos2);
+      sbDelete('cd_photos','supa_path',d.publicId).catch(function(){});
     }
     ok++;
   }
@@ -893,6 +1050,12 @@ function _doDelDoc(btn) {
 }
 
 // ── GENDER ────────────────────────────────────────────────────────────────
+function setStatus(sel) {
+  var docId = sel.dataset.doc;
+  var status = lsGet('status'); status[docId] = sel.value; lsSet('status', status);
+  showToast('Status updated');
+}
+
 function setGender(sel) {
   var docId=sel.dataset.doc; genderMap[docId]=sel.value; dbSetGender(docId,sel.value);
   var card=document.getElementById('card_'+docId); if(!card) return;
@@ -902,6 +1065,15 @@ function setGender(sel) {
 }
 
 // ── FILTER ────────────────────────────────────────────────────────────────
+function filterNeedsPhoto(btn) {
+  var active = btn.classList.toggle('primary');
+  document.querySelectorAll('.doctor-card').forEach(function(card) {
+    var docId = card.id.replace('card_','');
+    var hasPhoto = galleries[docId] && galleries[docId].length > 0;
+    card.classList.toggle('hidden', active && hasPhoto);
+  });
+}
+
 var _ft=null;
 function filterCards(q) {
   clearTimeout(_ft);
