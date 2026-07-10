@@ -484,6 +484,13 @@ function initGalleries() {
         dbGet(doc.id).forEach(function(p) {
           galleries[doc.id].push({ src: p.thumbUrl, origUrl: p.origUrl, dlUrl: p.dlUrl, publicId: p.publicId, name: p.name, user: true });
         });
+        // Load uploaded documents from localStorage
+        try {
+          var allDocs = JSON.parse(localStorage.getItem('cdnDocs') || '{}');
+          (allDocs[doc.id] || []).forEach(function(d) {
+            docFiles[doc.id].push({ name: d.name, type: d.type, size: d.size, src: d.dlUrl, dlUrl: d.dlUrl, publicId: d.publicId });
+          });
+        } catch(e) {}
       });
     });
   });
@@ -868,18 +875,50 @@ function triggerDownload(url, filename) {
 async function addDocs(docId, clinicId, secId, input) {
   var files = input.files ? Array.from(input.files) : (Array.isArray(input)?input:[]);
   if (!files.length) return;
+  var ok = 0;
   for (var i = 0; i < files.length; i++) {
     var file = files[i];
-    var src = URL.createObjectURL(file);
-    docFiles[docId].push({ name: file.name, type: file.type, size: file.size, src: src });
+    try {
+      showToast('\u2B06\uFE0F Uploading ' + file.name + '...');
+      var fd = new FormData();
+      fd.append('file', file);
+      fd.append('upload_preset', CDN_PRESET);
+      fd.append('folder', 'clinic-directory/' + docId + '/docs');
+      fd.append('resource_type', 'raw');
+      var res = await fetch('https://api.cloudinary.com/v1_1/' + CDN_CLOUD + '/raw/upload', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error('Upload failed: ' + res.status);
+      var d = await res.json();
+      var dlUrl = d.secure_url;
+      docFiles[docId].push({ name: file.name, type: file.type, size: file.size, src: dlUrl, dlUrl: dlUrl, publicId: d.public_id });
+      // Persist to localStorage
+      try {
+        var allDocs = JSON.parse(localStorage.getItem('cdnDocs') || '{}');
+        if (!allDocs[docId]) allDocs[docId] = [];
+        allDocs[docId].push({ name: file.name, type: file.type, size: file.size, dlUrl: dlUrl, publicId: d.public_id });
+        localStorage.setItem('cdnDocs', JSON.stringify(allDocs));
+      } catch(e) {}
+      ok++;
+    } catch(err) {
+      console.error('Doc upload failed:', err);
+      showToast('\u26A0\uFE0F Failed: ' + err.message);
+    }
   }
-  showToast('\u2705 '+files.length+' document'+(files.length>1?'s':'')+' added (session only)');
+  if (ok > 0) showToast('\u2705 ' + ok + ' document' + (ok>1?'s':'') + ' uploaded');
   refreshCard(docId, clinicId, secId);
 }
 
 function deleteDoc(docId, idx, clinicId, secId) {
   var docs = docFiles[docId]; if (!docs) return;
+  var doc = docs[idx];
   docs.splice(idx, 1);
+  // Remove from localStorage
+  try {
+    var allDocs = JSON.parse(localStorage.getItem('cdnDocs') || '{}');
+    if (allDocs[docId] && doc.publicId) {
+      allDocs[docId] = allDocs[docId].filter(function(d){ return d.publicId !== doc.publicId; });
+      localStorage.setItem('cdnDocs', JSON.stringify(allDocs));
+    }
+  } catch(e) {}
   showToast('\uD83D\uDDD1\uFE0F Document removed');
   refreshCard(docId, clinicId, secId);
 }
